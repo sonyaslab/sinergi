@@ -1,0 +1,1616 @@
+RINGKASAN PERHITUNGAN PDRB PER KATEGORI DAN SUBKATEGORI - SINERGI (Sistem Neraca Ekonomi Regional Terintegrasi) (versi 3)
+BPS Provinsi Kalimantan Utara - bahan konfirmasi untuk tim teknis - 4 November 2026
+Menggantikan Ringkasan_Rumus_LK_PDRB_per_Kategori.txt versi 2.
+Disusun dari:
+  - LK 01 PDRB Triwulanan TD2025 Put 0 (3 berkas operator) dan LK 02 Kompilasi TD2025 Put 0;
+  - 19 berkas data dasar di Drive;
+  - Indeks IBS triwulanan;
+  - templat data dasar v3 (TD2010 dan TD2025).
+Daftar komoditas di bawah sama persis dengan isi templat terisi.
+
+====================================================================================================
+BAGIAN 0. CARA MEMBACA
+====================================================================================================
+  Dua tahun dasar dihitung dengan SATU mesin hitung yang sama:
+  - TD2010 = KBLI 2020, 21 kategori A-U. Ini jalur produksi sekarang.
+  - TD2025 = KBLI 2025, 22 kategori A-V. Ini jalur rebasing, seri mulai 2019.
+  Kategori M dan N selalu dipisah. Kategori R, S, T, U (dan V di TD2025) juga dipisah.
+  Baris gabungan hanya ditampilkan sebagai kelompok publikasi dan tidak diinput:
+  - TD2010: 'M,N' = M + N dan 'R,S,T,U' = R + S + T + U (format 17 kategori).
+  - TD2025: 'TUV' = T + U + V (format ekspor LK 02 BPS).
+  Pemetaan dari LK resmi TD2025: TUV.1 menjadi T.1, TUV.2 menjadi T.2, TUV.3 menjadi U, dan V =
+    badan internasional (nihil).
+  Satu item = satu komoditas/rincian dalam satu lapus, satu metode, dan satu wilayah.
+  Operator boleh menambah atau menonaktifkan item per triwulan. Baris tabel pokok tidak pernah
+    berubah karena item.
+
+Tiga metode (rumus lengkap: docs/02_RUMUS_ENGINE.md)
+  REV: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 - rasio
+    KA) x output.
+      Angka diambil dari: lk.nilai_item seri KUANTUM, HARGA, RKA (+IH) ; jangkar di
+        lk.parameter_item (RKA_TD, H_TD).
+  EKS: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH dasar; IB:
+    ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Angka diambil dari: lk.nilai_item seri INDEKS, IH, BASE_ADHB/BASE_ADHK (4 triwulan dasar), RKA
+        ; lk.item.jenis_indeks ; lk.parameter_item RKA_TD.
+  DEF: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input (atau (1
+    - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Angka diambil dari: lk.nilai_item seri OUT_ADHB, NTB_ADHB, IH (+RKA) ; IH boleh dari
+        lk.nilai_seri_referensi lewat lk.tautan_seri.
+
+Jangkar tahun dasar = angka tahun dasar untuk menghitung ADHK:
+  - TD2025: harga dan IH dasar dihitung otomatis dari data 2025. Rasio KA dasar diisi dari LK Biaya
+    Antara (SE2026/SUT).
+  - TD2010: harga dasar = harga 2010, IH dasar = 100, rasio KA = rasio LK lama.
+  - Item yang tidak punya data tahun dasar WAJIB diberi jangkar. Tanpa jangkar, ADHK item itu
+    menjadi 0.
+
+Urutan hitung dan asal angka di backend:
+  1. Item dan data dasar: lk.item, lk.nilai_item, lk.parameter_item.
+  2. Rumus turunan dan tautan: lk.tautan_seri dan lk.nilai_seri_referensi.
+  3. Hasil per item lalu per metode: lk.hasil_item, lk.hasil_metode (+ penyesuaian ADJ1/ADJ2/SC dari
+     lk.penyesuaian tahap METODE).
+  4. Rekonsiliasi per lapus: REV + EKS + DEF, + ADJ3, + ADJ4 (lk.penyesuaian tahap REKON), ditulis
+     ke lk.hasil_lapus tahap BENC.
+  5. Agregasi pohon: subkategori, kategori, kelompok, NTB/TOP/SOP/PDRB (ref.lapus,
+     ref.lapus_kelompok).
+  6. Simulasi pimpinan: lk.penyesuaian tahap SIMULASI, ditulis ke lk.hasil_lapus tahap FINAL.
+  7. Tabel pokok: view lk.v_tabel_pokok, berisi semua baris pohon untuk setiap periode. Dashboard
+     membaca view yang sama.
+
+====================================================================================================
+BAGIAN A. TD2025 (KBLI 2025) - sumber: LK 01 TD2025 Put 0, data 2019-T1 s.d. 2026-T2 (+2026-T3 untuk 6 seri dari Drive)
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+KATEGORI A - Pertanian, Kehutanan, dan Perikanan
+----------------------------------------------------------------------------------------------------
+
+A.1.a  Pertanian Tanaman Pangan
+    REV (7 komoditas): Padi, Jagung, Kedelai, Kacang Tanah, Kacang Hijau, Ubi Kayu, Ubi Jalar.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: CVM; KSA Jagung Januari /CVM; KSA-DES.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+A.1.b  Pertanian Tanaman Hortikultura
+    REV (76 komoditas): Buncis, Blewah, Bawang Merah, Bawang Putih, Bawang Daun, Bayam, Cabai Besar,
+      Cabai Keriting, Cabai Besar/ TW / Teropong, Cabai Rawit, dan 66 lainnya.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: DASAR (BST); DASAR (SBS); DASAR (TBF).
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+A.1.c  Pertanian Tanaman Perkebunan
+    REV (9 komoditas): Kelapa Sawit, Kelapa, Karet, Kopi, Kakao, Tebu, Lada/Merica, Sereh, Cengkeh.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: CVM.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+A.1.d  Peternakan
+    REV (7 komoditas): Sapi Potong, Kerbau, Kambing, Babi, Ayam Ras, Itik/Bebek, Telur.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: CVM.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+A.1.e  Jasa Pertanian dan Perburuan
+    REV (4 komoditas): Pertanian Tanaman Pangan, Pertanian Tanaman Hortikultura Semusim,
+      Hortikultura Tahunan, dan Lainnya, Perkebunan Semusim dan Tahunan, Peternakan.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: PDRB ADHB.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+A.2  Pengelolaan Kehutanan dan Pemanenan Kayu
+    REV (1 komoditas): Produksi Kayu Bulat.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: DitjenPHL.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+A.3  Perikanan
+    REV (65 komoditas): Bandeng, Bawal Air Tawar, Belanak, Gurame; Gurami, Kepiting Bakau, Lele,
+      Mas, Mujair, Nila, Patin, dan 55 lainnya.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: CVM; DKP.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: kuantum 2026-T3 untuk Rumput Laut Tangkap diisi dari data dasar Drive (angka 2025-T1
+        s.d. 2026-T2 identik dengan LK).
+
+----------------------------------------------------------------------------------------------------
+KATEGORI B - Pertambangan dan Penggalian
+----------------------------------------------------------------------------------------------------
+
+B.1  Pertambangan Minyak Bumi, Gas Alam, dan Panas Bumi   [migas]
+    REV (2 komoditas): Minyak Bumi, Gas Bumi.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: PT Pertamina EP Bunyu dan PT Pertamina Medco Tarakan.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+B.2  Pertambangan Batu Bara dan Lignit
+    REV (1 komoditas): Batubara.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Kementerian ESDM.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+B.3  Pertambangan Bijih Logam
+    REV (1 komoditas): Produksi Emas.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2025-T4.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    EKS (1 komoditas): Indeks Pertambangan Biji Logam.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: PDRB.
+      Data tersedia: 2019-T1 s.d. 2026-T4.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+B.4  Pertambangan dan Penggalian Lainnya
+    EKS (1 komoditas): Indeks Berlaku Penggalian Lainnya.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: PDRB.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+----------------------------------------------------------------------------------------------------
+KATEGORI C - Industri
+----------------------------------------------------------------------------------------------------
+
+C.1.1  Industri Produk dari Batu Bara
+    Belum ada item/data. Isi bila ada aktivitas, atau tandai NIHIL di sistem.
+
+C.1.2  Industri Pengilangan Minyak Bumi   [migas]
+    EKS (1 komoditas): IMK  Industri Produk dari Batu Bara dan Pengilangan Minyak Bumi.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Pengilangan minyak bumi.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2023-T4 s.d. 2026-T2.
+
+C.2.1  Industri Makanan
+    EKS (1 komoditas): IMK Industri Makanan.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Makanan.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.2  Industri Minuman
+    EKS (1 komoditas): IMK Industri Minuman.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Minuman.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.3  Industri Produk Tembakau
+    EKS (1 komoditas): IMK  Industri Pengolahan Tembakau.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+C.2.4  Industri Tekstil
+    EKS (1 komoditas): IMK Industri Tekstil.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Tekstil.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.5  Industri Pakaian Jadi dan Perlengkapannya
+    EKS (1 komoditas): IMK Industri Pakaian Jadi.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Pakaian Jadi dan Perlengkapannya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.6  Industri Kulit dan Produk Sejenis
+    EKS (1 komoditas): IMK Industri Kulit, Barang dari Kulit dan Alas Kaki.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2021-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Output Industri Kulit dan Produk Sejenis.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.7  Industri Kayu, Barang dari Kayu, dan Sejenisnya
+    EKS (1 komoditas): IMK Industri Kayu, Barang dari Kayu dan Gabus (Tidak Termasuk Furnitur) dan
+      Barang Anyaman dari Bambu, Rotan dan Sejenisnya.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Output Industri kayu, barang dari kayu dan sejenisnya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.8  Industri Kertas dan Barang dari Kertas
+    EKS (1 komoditas): IMK Industri Kertas dan Barang dari Kertas.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Kertas dan Barang dari Kertas.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.9  Industri Percetakan dan Reproduksi Media Rekaman
+    EKS (1 komoditas): IMK Industri Pencetakan dan Reproduksi Media Rekaman.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Pencetakan dan Reproduksi Media Rekaman.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.10  Industri Bahan Kimia dan Barang dari Bahan Kimia
+    EKS (1 komoditas): IMK Industri Bahan Kimia dan Barang dari Bahan Kimia.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Bahan Kimia dan Barang dari Bahan Kimia.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.11  Industri Sediaan Farmasi, Obat Kimia, dan Obat Tradisional
+    EKS (1 komoditas): IMK Industri Farmasi, Produk Obat Kimia dan Obat Tradisional.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Sediaan Farmasi, Obat Kimia, dan Obat Tradisional.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.12  Industri Barang dari Karet dan Plastik
+    EKS (1 komoditas): IMK Industri Karet, Barang dari Karet dan Plastik.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Output Industri Barang dari Karet dan Plastik.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.13  Industri Produk Mineral Nonlogam
+    EKS (1 komoditas): imk Industri Barang Galian Bukan Logam.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Output Produk Mineral Non Logam.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.14  Industri Logam Dasar
+    REV (1 komoditas): Aluminium.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Data tersedia: 2026-T2 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    EKS (1 komoditas): IMK Industri Logam Dasar.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+C.2.15  Industri Produk Logam Pabrikasi Bukan Mesin dan Peralatannya
+    EKS (1 komoditas): IMK Industri Barang Logam, Bukan Mesin dan Peralatannya.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Produk Logam Pabrikasi Bukan Mesin dan Peralatannya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.16  Industri Produk Komputer, Elektronik, dan Optik
+    EKS (1 komoditas): IMK Industri Komputer, Barang Elektronik dan Optik.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Produk Komputer, Elektronik, dan Optik.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.17  Industri Peralatan Listrik
+    EKS (1 komoditas): IMK Industri Peralatan Listrik.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Peralatan Listrik.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.18  Industri Mesin dan Perlengkapan YTDL
+    EKS (1 komoditas): IMK Industri Mesin dan Perlengkapan ytdl.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Output Industri Mesin dan Perlengkapan YTDL.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.19  Industri Kendaraan Bermotor dan Alat Angkutan Lainnya
+    EKS (2 komoditas): IMK  Industri Kendaraan Bermotor, Trailer dan Semi Trailer, IMK Industri Alat
+      Angkutan Lainnya.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Output Industri Kendaraan Bermotor dan Alat Angkutan Lainnya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.20  Industri Furnitur
+    EKS (1 komoditas): IMK Industri Furnitur.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Output Industri Furnitur.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.21  Industri Produk Lainnya
+    EKS (1 komoditas): IMK Industri Pengolahan Lainnya.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Industri Produk Lainnya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+C.2.22  Reparasi, Pemeliharaan, dan Pemasangan Mesin dan Peralatan
+    EKS (1 komoditas): IMK  Jasa Reparasi dan Pemasangan Mesin dan Peralatan.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: belum ada data.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+    DEF (1 komoditas): Reparasi, Pemeliharaan, dan Pemasangan Mesin dan Peralatan.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI D - Penyediaan Listrik, Gas, Uap/Air Panas, dan Udara Dingin
+----------------------------------------------------------------------------------------------------
+
+D.1  Penyediaan Listrik
+    REV (2 komoditas): Produksi Listrik, Captive Power.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: K.ESDM; PLN.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+D.2  Penyediaan Gas, Uap/Air Panas, dan Udara Dingin
+    REV (1 komoditas): Penyaluran Gas.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: PT PGN.
+      Data tersedia: 2019-T1 s.d. 2026-T4.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+----------------------------------------------------------------------------------------------------
+KATEGORI E - Penyediaan Air, Pengelolaan Limbah, Penanganan Limbah dan Remediasi
+----------------------------------------------------------------------------------------------------
+
+E.1  Penyediaan Air
+    DEF (1 komoditas): Output Penyediaan Air.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+E.2.a  Pengelolaan Limbah dan Aktivitas Remediasi Pemerintah
+    DEF (1 komoditas): Output Pengolahan Limbah Pemerintah.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+E.2.b  Pengelolaan Limbah dan Aktivitas Remediasi Swasta
+    DEF (1 komoditas): Output Pengolahan Limbah Swasta.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI F - Konstruksi
+----------------------------------------------------------------------------------------------------
+
+F  Konstruksi
+    EKS (1 komoditas): Indeks Nilai Konstruksi.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+----------------------------------------------------------------------------------------------------
+KATEGORI G - Perdagangan Besar dan Eceran
+----------------------------------------------------------------------------------------------------
+
+G.1  Perdagangan Besar
+    EKS (1 komoditas): Indeks Berlaku Perdagangan Besar.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+G.2  Perdagangan Eceran
+    EKS (1 komoditas): Indeks Berlaku Perdagangan Eceran.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+----------------------------------------------------------------------------------------------------
+KATEGORI H - Transportasi dan Penyimpanan
+----------------------------------------------------------------------------------------------------
+
+H.1  Transportasi Kereta Api
+    Belum ada item/data. Isi bila ada aktivitas, atau tandai NIHIL di sistem.
+
+H.2  Transportasi Jalan dan Transportasi melalui Saluran Pipa
+    REV (1 komoditas): Jumlah penumpang Damri.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Dishub Provinsi.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: kuantum 2026-T3 untuk Jumlah penumpang Damri diisi dari data dasar Drive (angka
+        2025-T1 s.d. 2026-T2 identik dengan LK).
+
+H.3.a  Angkutan Laut
+    REV (2 komoditas): Penumpang angkutan laut, Muat barang angkutan laut.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: BPS.
+      Data tersedia: 2019-T1 s.d. 2026-T4.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: kuantum 2026-T3 untuk penumpang dan muat barang angkutan laut diisi dari data dasar
+        Drive (angka 2025-T1 s.d. 2026-T2 identik dengan LK).
+
+H.3.b  Angkutan Sungai, Danau, dan Penyeberangan (ASDP)
+    REV (2 komoditas): Penumpang Speedboat, Penumpang Ferry.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: BPS; PT ASDP.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: kuantum 2026-T3 untuk Penumpang Speedboat diisi dari data dasar Drive (angka 2025-T1
+        s.d. 2026-T2 identik dengan LK).
+
+H.4  Transportasi Udara
+    REV (2 komoditas): Penumpang angkutan udara, Kargo angkutan udara.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: BPS.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: kuantum 2026-T3 untuk Penumpang angkutan udara diisi dari data dasar Drive (angka
+        2025-T1 s.d. 2026-T2 identik dengan LK).
+
+H.5  Pergudangan dan Penunjang Transportasi
+    DEF (1 komoditas): Output Pergudangan dan Jasa Penunjang Transportasi.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+H.6  Aktivitas Pos dan Kurir
+    DEF (1 komoditas): Output Aktivitas Pos dan Kurir.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI I - Penyediaan Akomodasi dan Makan Minum
+----------------------------------------------------------------------------------------------------
+
+I.1  Penyediaan Akomodasi
+    REV (2 komoditas): Hotel Bintang, Hotel Non Bintang.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+
+I.2  Penyediaan Makanan dan Minuman
+    DEF (3 komoditas): Output penyediaan makan minum, Output dari pengeluaran makan minum jadi,
+      Realisasi MBG.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI J - Penerbitan, Penyiaran, serta Produksi dan Distribusi Konten
+----------------------------------------------------------------------------------------------------
+
+J.1  Penerbitan, Penyiaran, serta Produksi dan Distribusi Konten Pemerintah
+    DEF (1 komoditas): Output Penerbitan Penyiaran Pemerintah.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+J.2  Penerbitan, Penyiaran, serta Produksi dan Distribusi Konten Swasta
+    DEF (1 komoditas): Output Penerbitan Penyiaran Swasta.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI K - Telekomunikasi, Pemrograman Komputer, Konsultasi, Infrastruktur Komputasi, dan Informasi Lainnya
+----------------------------------------------------------------------------------------------------
+
+K  Telekomunikasi, Pemrograman Komputer, Konsultasi, Infrastruktur Komputasi, dan Informasi Lainnya
+    DEF (1 komoditas): Output Telekomunikasi, Pemograman Komputer.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI L - Jasa Keuangan dan Asuransi
+----------------------------------------------------------------------------------------------------
+
+L.1  Aktivitas Intermediasi Keuangan
+    DEF (1 komoditas): Output Aktivitas Intermediasi Keuangan.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+L.2  Aktivitas Keuangan Lainnya, Kecuali Asuransi dan Dana Pensiun
+    DEF (1 komoditas): Output Aktivitas Keuangan Lainnya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+L.3  Aktivitas Asuransi, Reasuransi, Penjaminan, dan Dana Pensiun
+    DEF (1 komoditas): Output Asuransi dan Dana Pensiun.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+L.4  Aktivitas Penunjang Keuangan
+    DEF (1 komoditas): Output Aktivitas Penunjangan Keuangan.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI M - Real Estat
+----------------------------------------------------------------------------------------------------
+
+M  Real Estat
+    DEF (1 komoditas): Output Real Estate.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI N - Aktivitas Profesional, Ilmiah, dan Teknis
+----------------------------------------------------------------------------------------------------
+
+N  Aktivitas Profesional, Ilmiah, dan Teknis
+    DEF (1 komoditas): Output Aktivitas Profesional.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI O - Aktivitas Administratif dan Penunjang Usaha
+----------------------------------------------------------------------------------------------------
+
+O  Aktivitas Administratif dan Penunjang Usaha
+    DEF (1 komoditas): Output Aktivitas Administratif.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI P - Administrasi Pemerintahan dan Pertahanan; Jaminan Sosial Wajib
+----------------------------------------------------------------------------------------------------
+
+P  Administrasi Pemerintahan dan Pertahanan; Jaminan Sosial Wajib
+    DEF (6 komoditas): Realisasi Belanja Pegawai dan Penyusutan Belanja Modal APBD, Realisasi
+      Belanja Pegawai dan Penyusutan belanja Modal APBN, Reaisasi Belanja Pegawai Tanpa Fungsi
+      Pendidikan dan Kesehatan APBD, Realisasi Penyusutan Belanja Modal Tanpa Fungsi Pendidikan dan
+      Kesehatan APBD\, Realisasi APBN Belanja Pegawai, Realisasi APBN Belanja Modal.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: BKAD; BPS.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI Q - Pendidikan
+----------------------------------------------------------------------------------------------------
+
+Q.1  Pendidikan Pemerintah
+    DEF (1 komoditas): Output Pendidikan Pemerintah.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+Q.2  Pendidikan Swasta Market
+    DEF (1 komoditas): Output Pendidikan Swasta Market.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+Q.3  Pendidikan Swasta Nonmarket
+    DEF (1 komoditas): Output Pendidikan Swasta Nonmarket.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI R - Aktivitas Kesehatan dan Sosial
+----------------------------------------------------------------------------------------------------
+
+R.1  Aktivitas Kesehatan Pemerintah
+    DEF (1 komoditas): Output Kesehatan Pemerintah.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+R.2  Aktivitas Kesehatan Swasta Market
+    DEF (1 komoditas): Output Kesehatan Swasta Market.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+R.3  Aktivitas Kesehatan Swasta Nonmarket
+    DEF (1 komoditas): Output Kesehatan Non Market.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI S - Aktivitas Kesenian, Olahraga, dan Rekreasi
+----------------------------------------------------------------------------------------------------
+
+S.1  Aktivitas Kesenian, Olahraga dan Rekreasi Pemerintah
+    DEF (1 komoditas): Output Aktivitas Kesenian, Olahraga dan Rekreasi Pemerintah.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+S.2  Aktivitas Kesenian, Olahraga dan Rekreasi Lainnya Swasta Market
+    DEF (1 komoditas): Output Aktivitas Kesenian, Olahraga dan Rekreasi Lainnya Swasta Market.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+S.3  Aktivitas Kesenian, Olahraga dan Rekreasi Lainnya Swasta Nonmarket
+    DEF (1 komoditas): Output Aktivitas Kesenian, Olahraga dan Rekreasi Lainnya Swasta Nonmarket.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI T - Aktivitas Jasa Lainnya
+----------------------------------------------------------------------------------------------------
+
+T.1  Aktivitas Jasa Lainnya Swasta Market
+    DEF (1 komoditas): Output Aktivitas Lainnya Swasta Market.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+T.2  Aktivitas Jasa Lainnya Swasta Nonmarket
+    DEF (1 komoditas): Output Aktivitas Lainnya Swasta Nonmarket.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI U - Aktivitas Rumah Tangga sebagai Pemberi Kerja dan Produksi untuk Keperluan Sendiri
+----------------------------------------------------------------------------------------------------
+
+U  Aktivitas Rumah Tangga sebagai Pemberi Kerja dan Produksi untuk Keperluan Sendiri
+    DEF (1 komoditas): Output Aktivitas Lainnya Own Consumption.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: 2019-T1 s.d. 2026-T2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI V - Aktivitas Badan Internasional dan Badan Ekstra Internasional Lainnya
+----------------------------------------------------------------------------------------------------
+
+V  Aktivitas Badan Internasional dan Badan Ekstra Internasional Lainnya
+    Belum ada item/data. Isi bila ada aktivitas, atau tandai NIHIL di sistem.
+
+Baris NTB, TOP, SOP, PDRB (TD2025)
+  NTB = jumlah kategori A s.d. V. TOP (pajak atas produk) dan SOP (subsidi atas produk) dihitung
+    dengan mesin yang sama dan rasio KA = 0.
+  TOP.SOP = TOP - SOP, lalu PDRB = NTB + TOP.SOP. Di Put 0 TOP dan SOP belum diisi, sehingga PDRB =
+    NTB. Metode dan sumbernya perlu arahan BPS RI.
+
+====================================================================================================
+BAGIAN B. TD2010 (KBLI 2020) - sumber: berkas data dasar di Drive (riwayat 2019-2024 sesuai ketersediaan)
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+KATEGORI A - Pertanian, Kehutanan, dan Perikanan
+----------------------------------------------------------------------------------------------------
+
+A.1.a  Tanaman Pangan
+    REV (7 komoditas): Padi, Jagung, Kedelai, Kacang Tanah, Kacang Hijau, Ubi Kayu, Ubi Jalar.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: KSA/Ubinan BPS (A.1.a Tanaman Pangan).
+      Data tersedia: 2021-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: A.1.a.
+
+A.1.b  Tanaman Hortikultura Semusim
+    REV (26 komoditas): Bawang Daun, Bawang Merah, Bawang Putih, Bayam, Buncis, Cabai
+      Besar/TW/Teropong, Cabai Keriting, Cabai Rawit, Jamur Lainnya, Jamur Merang, dan 16 lainnya.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: SPH-SBS BPS (A.1.b Hortikultura Semusim).
+      Data tersedia: 2023-T1 s.d. 2026-T3.
+      Catatan: seri turunan: HARGA = harga dasar 2010 (jangkar) x IH / 100.
+      Catatan: padanan TD2025: A.1.b.
+
+A.1.c  Perkebunan Semusim
+    REV (2 komoditas): Tebu, Tembakau.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Ditjenbun (A.1.e Perkebunan, 'Komoditas Lainnya'); Ditjenbun (A.1.e, 'Data
+        Tambahan Prod Dari Pusat').
+      Data tersedia: 2023-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: A.1.c.
+
+A.1.d  Tanaman Hortikultura Tahunan dan Lainnya
+    REV (28 komoditas): Alpukat, Anggur, Apel, Belimbing, Buah Naga, Duku/Langsat/Kokosan, Durian,
+      Jambu Air, Jambu Biji, Jengkol, dan 18 lainnya.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: SPH-BST BPS (A.1.d Hortikultura Tahunan).
+      Data tersedia: 2023-T1 s.d. 2026-T3.
+      Catatan: seri turunan: HARGA = harga dasar 2010 (jangkar) x IH / 100.
+      Catatan: padanan TD2025: A.1.b.
+
+A.1.e  Perkebunan Tahunan
+    REV (11 komoditas): Kelapa Sawit (TBS), Kelapa, Karet, Kopi, Kakao, Lada, Pala, Cengkeh, Jambu
+      Mete, Sagu, dan 1 lainnya.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Ditjenbun (A.1.e 'Komoditas Lainnya' / 'Data Tambahan'); Sipedas/Disbun (A.1.e
+        'Rekap').
+      Data tersedia: 2023-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: A.1.c.
+
+A.1.f  Peternakan
+    REV (11 komoditas): Daging Ayam, Telur Ayam, Sapi, Kerbau, Kambing, Domba, Babi, Pemotongan
+      kurban - Sapi, Pemotongan kurban - Kerbau, Pemotongan kurban - Kambing, dan 1 lainnya.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Data pusat (A.1.f 'Peternakan_Pusat' blok Pemotongan); Data pusat (A.1.f
+        'Peternakan_Pusat').
+      Data tersedia: 2023-T1 s.d. 2026-T2.
+      Catatan: padanan TD2025: A.1.d.
+
+A.1.g  Jasa Pertanian dan Perburuan
+    EKS (1 komoditas): Jasa pertanian dan perburuan.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Turunan output A.1.a-A.1.f.
+      Data tersedia: belum ada data.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: A.1.e.
+
+A.2  Kehutanan dan Penebangan Kayu
+    REV (7 komoditas): Kayu Hutan Tanaman Industri, Kayu Jenis Lainnya, Kayu Eboni, Kayu Indah, Kayu
+      Kelompok Meranti, Kayu Rimba Campuran, Getah Karet (HHBK).
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Ditjen PHL (berkas 'A.3 Kehutanan').
+      Data tersedia: 2020-T2 s.d. 2026-T3.
+      Catatan: padanan TD2025: A.2.
+
+A.3  Perikanan
+    REV (8 komoditas): Tangkap - Ikan, Tangkap - Udang dan krustasea lainnya, Tangkap - Rumput laut
+      dan sejenisnya, Tangkap - Lainnya, Budidaya - Ikan, Budidaya - Udang dan krustasea lainnya,
+      Budidaya - Rumput laut dan sejenisnya, Budidaya - Lainnya.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Dinas Perikanan (berkas 'A.2.e Perikanan').
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: A.3.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI B - Pertambangan dan Penggalian
+----------------------------------------------------------------------------------------------------
+
+B.1  Pertambangan Minyak, Gas dan Panas Bumi   [migas]
+    REV (2 komoditas): Minyak bumi, Gas bumi.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Data pusat ('Gas Bumi'); Pertamina/Medco; harga = rata-rata ICP x kurs ('Harga
+        Migas').
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: B.1.
+
+B.2  Pertambangan Batubara dan Lignit
+    REV (1 komoditas): Batubara.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: MODI/ESDM; HBA ('LK Batubara').
+      Data tersedia: 2019-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: B.2.
+
+B.3  Pertambangan Bijih Logam
+    EKS (1 komoditas): Bijih logam.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: ESDM.
+      Data tersedia: belum ada data.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: B.3.
+
+B.4  Pertambangan dan Penggalian Lainnya
+    DEF (1 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Penggalian (proksi pajak MBLB).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: Bapenda kab/kota ('Pajak MBLB').
+      Data tersedia: 2024-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: B.4.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI C - Industri Pengolahan
+----------------------------------------------------------------------------------------------------
+
+C.1.a  Industri Batu Bara
+    Belum ada item/data. Isi bila ada aktivitas, atau tandai NIHIL di sistem.
+
+C.1.b  Industri Pengilangan Migas   [migas]
+    EKS (2 komoditas): LNG, KBLI 19 Industri Batu Bara dan Pengilangan Migas - IBS.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); PT Kayan LNG ('Produksi LNG');
+        IHP LPG ('C1 LK Migas').
+      Data tersedia: 2024-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: C.1.2.
+
+C.2  Industri Makanan dan Minuman
+    EKS (4 komoditas): KBLI 10 Industri Makanan - IBS, KBLI 10 Industri Makanan - IMK, KBLI 11
+      Industri Minuman - IBS, KBLI 11 Industri Minuman - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.1, C.2.2.
+    PDK (4 komoditas): CPO (minyak sawit mentah), PKO (minyak inti sawit), Kernel sawit (IBS), Udang
+      beku (IBS).
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: Disbun/IBS ('C. Data Produksi Kategori C').
+      Data tersedia: 2024-T1 s.d. 2025-T4.
+      Catatan: padanan TD2025: C.2.1.
+
+C.3  Pengolahan Tembakau
+    EKS (2 komoditas): KBLI 12 Pengolahan Tembakau - IBS, KBLI 12 Pengolahan Tembakau - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.3.
+
+C.4  Industri Tekstil dan Pakaian Jadi
+    EKS (4 komoditas): KBLI 13 Industri Tekstil - IBS, KBLI 13 Industri Tekstil - IMK, KBLI 14
+      Industri Pakaian Jadi - IBS, KBLI 14 Industri Pakaian Jadi - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.4, C.2.5.
+
+C.5  Industri Kulit, Barang dari Kulit dan Alas Kaki
+    EKS (2 komoditas): KBLI 15 Industri Kulit dan Alas Kaki - IBS, KBLI 15 Industri Kulit dan Alas
+      Kaki - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.6.
+
+C.6  Industri Kayu, Barang dari Kayu dan Gabus dan Barang Anyaman
+    EKS (2 komoditas): KBLI 16 Industri Kayu - IBS, KBLI 16 Industri Kayu - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.7.
+    PDK (11 komoditas): Kayu gergajian (Ditjen PHL), Kayu lapis/LVL (Ditjen PHL), Serpih kayu
+      (Ditjen PHL), Veneer (Ditjen PHL), Blockboard (IBS), Finger joint (IBS), Moulding (IBS), Plywood
+      (IBS), S4S (IBS), Solid laminasi (IBS), dan 1 lainnya.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: Ditjen PHL ('C. Industri Kayu', diperbarui 29-10-2026); IBS ('C. Data Produksi
+        Kategori C', Tabluasi IBS).
+      Data tersedia: 2025-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: C.2.7.
+
+C.7  Industri Kertas dan Barang dari Kertas; Percetakan dan Reproduksi Media Rekaman
+    REV (1 komoditas): Pulp (bubur kertas).
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: Perusahaan pulp ('C. Data Produksi Kategori C', sheet Pulp).
+      Data tersedia: 2025-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: C.2.8.
+    EKS (4 komoditas): KBLI 17 Industri Kertas - IBS, KBLI 17 Industri Kertas - IMK, KBLI 18
+      Industri Percetakan - IBS, KBLI 18 Industri Percetakan - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: padanan TD2025: C.2.8, C.2.9.
+
+C.8  Industri Kimia, Farmasi dan Obat Tradisional
+    EKS (4 komoditas): KBLI 20 Industri Kimia - IBS, KBLI 20 Industri Kimia - IMK, KBLI 21 Industri
+      Farmasi - IBS, KBLI 21 Industri Farmasi - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.10, C.2.11.
+
+C.9  Industri Karet, Barang dari Karet dan Plastik
+    EKS (2 komoditas): KBLI 22 Industri Karet dan Plastik - IBS, KBLI 22 Industri Karet dan Plastik
+      - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.12.
+
+C.10  Industri Barang Galian bukan Logam
+    EKS (2 komoditas): KBLI 23 Industri Barang Galian Bukan Logam - IBS, KBLI 23 Industri Barang
+      Galian Bukan Logam - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.13.
+
+C.11  Industri Logam Dasar
+    EKS (2 komoditas): KBLI 24 Industri Logam Dasar - IBS, KBLI 24 Industri Logam Dasar - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.14.
+
+C.12  Industri Barang Logam; Komputer, Barang Elektronik, Optik; dan Peralatan Listrik
+    EKS (6 komoditas): KBLI 25 Industri Barang Logam - IBS, KBLI 25 Industri Barang Logam - IMK,
+      KBLI 26 Industri Komputer dan Elektronik - IBS, KBLI 26 Industri Komputer dan Elektronik - IMK,
+      KBLI 27 Industri Peralatan Listrik - IBS, KBLI 27 Industri Peralatan Listrik - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.15, C.2.16, C.2.17.
+
+C.13  Industri Mesin dan Perlengkapan YTDL
+    EKS (2 komoditas): KBLI 28 Industri Mesin YTDL - IBS, KBLI 28 Industri Mesin YTDL - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.18.
+
+C.14  Industri Alat Angkutan
+    EKS (4 komoditas): KBLI 29 Industri Kendaraan Bermotor - IBS, KBLI 29 Industri Kendaraan
+      Bermotor - IMK, KBLI 30 Industri Alat Angkutan Lainnya - IBS, KBLI 30 Industri Alat Angkutan
+      Lainnya - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.19.
+
+C.15  Industri Furnitur
+    EKS (2 komoditas): KBLI 31 Industri Furnitur - IBS, KBLI 31 Industri Furnitur - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.20.
+
+C.16  Industri Pengolahan Lainnya; Jasa Reparasi dan Pemasangan Mesin dan Peralatan
+    EKS (4 komoditas): KBLI 32 Industri Pengolahan Lainnya - IBS, KBLI 32 Industri Pengolahan
+      Lainnya - IMK, KBLI 33 Jasa Reparasi dan Pemasangan Mesin - IBS, KBLI 33 Jasa Reparasi dan
+      Pemasangan Mesin - IMK.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Indeks produksi IBS ('C Non Migas'); IHP ('IHP'); Indeks produksi IMK (berkas 'C.
+        Indeks IMK triwulanan').
+      Data tersedia: 2025-T1 s.d. 2025-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: C.2.21, C.2.22.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI D - Pengadaan Listrik dan Gas
+----------------------------------------------------------------------------------------------------
+
+D.1  Ketenagalistrikan
+    REV (2 komoditas): Distribusi listrik PLN UP3 Tanjung Selor, Listrik kawasan industri (KIPI).
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: PLN UP3 Tanjung Selor; Perkiraan (sheet 'Listrik KPI').
+      Data tersedia: 2025-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: D.1.
+    PDK (1 komoditas): Produksi listrik gross UPDK Tarakan.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: PLN NP UPDK Tarakan.
+      Data tersedia: 2025-T1 s.d. 2026-T1.
+      Catatan: padanan TD2025: D.1.
+
+D.2  Pengadaan Gas dan Produksi Es
+    REV (1 komoditas): Gas kota (jargas PGN Tarakan).
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: PGN Tarakan.
+      Data tersedia: 2025-T1 s.d. 2026-T1.
+      Catatan: padanan TD2025: D.2.
+    EKS (1 komoditas): Produksi es.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: SKTNP.
+      Data tersedia: belum ada data.
+      Catatan: padanan TD2025: D.2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI E - Pengadaan Air, Pengelolaan Sampah, Limbah dan Daur Ulang
+----------------------------------------------------------------------------------------------------
+
+E  Pengadaan Air, Pengelolaan Sampah, Limbah dan Daur Ulang
+    EKS (1 komoditas): Pengelolaan limbah, sampah, daur ulang.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: SKTNP.
+      Data tersedia: belum ada data.
+      Catatan: padanan TD2025: E.2.b.
+    DEF (2 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Distribusi air PDAM, Air kawasan
+      industri (KIPI, PT AJT).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: PDAM ('Air (Distribusi)'); Perkiraan ('KIPI Pengadaan Air (PT AJT)').
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: IH memakai seri referensi bersama (REF_IHP_AIR).
+      Catatan: padanan TD2025: E.1.
+    PDK (1 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Produksi air PDAM.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: PDAM SM Produksi ('Air (Produksi)').
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: E.1.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI F - Konstruksi
+----------------------------------------------------------------------------------------------------
+
+F  Konstruksi
+    DEF (4 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Belanja konstruksi APBN, Belanja
+      gedung & jalan APBD Pemprov, Belanja gedung & jalan APBD Pemkab/Pemkot, Investasi bangunan KIHI
+      dan PSN.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: BPKAD ('APBD Bangunan Jalan'); BPKAD kab/kota ('APBD Bangunan Jalan'); DJPb
+        ('APBN'); Perusahaan KIHI (baris TOTAL).
+      Data tersedia: 2022-T2 s.d. 2026-T3.
+      Catatan: IH memakai seri referensi bersama (REF_IHPB_KONS).
+      Catatan: padanan TD2025: F.
+    PDK (2 komoditas): Pengadaan semen, Impor besi dan baja.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: BPS RI ('Impor Besi dan Baja'); BPS RI ('Realisasi Pengadaan Semen').
+      Data tersedia: 2022-T3 s.d. 2026-T1.
+      Catatan: padanan TD2025: F.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI G - Perdagangan Besar dan Eceran; Reparasi Mobil dan Sepeda Motor
+----------------------------------------------------------------------------------------------------
+
+G.1  Perdagangan Mobil, Sepeda Motor dan Reparasinya
+    EKS (1 komoditas): Kendaraan baru roda 2 (BBNKB I).
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Bapenda (BBNKB I).
+      Data tersedia: 2022-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: G.2.
+
+G.2  Perdagangan Besar dan Eceran, Bukan Mobil dan Sepeda Motor
+    DEF (31 komoditas): Margin atas barang A.1.a, Margin atas barang A.1.b, Margin atas barang
+      A.1.c, Margin atas barang A.1.d, Margin atas barang A.1.e, Margin atas barang A.1.f, Margin atas
+      barang A.1.g, Margin atas barang A.2, Margin atas barang A.3, Margin atas barang B.1, dan 21
+      lainnya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: BPS impor (sheet 'IKK' blok IMPOR); SUT / rasio margin TD 2025.
+      Data tersedia: 2023-T1 s.d. 2026-T1.
+      Catatan: padanan TD2025: G.1/G.2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI H - Transportasi dan Pergudangan
+----------------------------------------------------------------------------------------------------
+
+H.1  Angkutan Rel
+    Belum ada item/data. Isi bila ada aktivitas, atau tandai NIHIL di sistem.
+
+H.2  Angkutan Darat
+    EKS (1 komoditas): Angkutan darat DAMRI.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: DAMRI.
+      Data tersedia: 2023-T1 s.d. 2026-T3.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: H.2.
+    PDK (1 komoditas): Konsumsi RT transportasi per kapita (SERUTI).
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: SERUTI.
+      Data tersedia: 2022-T1 s.d. 2026-T1.
+      Catatan: padanan TD2025: H.2.
+
+H.3  Angkutan Laut
+    EKS (2 komoditas): Angkutan laut - penumpang berangkat, Angkutan laut - barang dimuat.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: KSOP/Pelindo.
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: H.3.a.
+
+H.4  Angkutan Sungai Danau dan Penyeberangan
+    EKS (1 komoditas): Angkutan sungai, danau, penyeberangan (ASDP).
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: ASDP.
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: H.3.b.
+
+H.5  Angkutan Udara
+    EKS (1 komoditas): Angkutan udara - penumpang berangkat.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Bandara.
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: H.4.
+    PDK (2 komoditas): Angkutan udara - pesawat berangkat, Angkutan udara - kargo dimuat.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: Bandara.
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: H.4.
+
+H.6  Pergudangan dan Jasa Penunjang Angkutan; Pos dan Kurir
+    EKS (2 komoditas): Pergudangan - barang dibongkar angkutan udara, Pergudangan - barang dibongkar
+      angkutan laut.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: Bandara; KSOP.
+      Data tersedia: 2022-T1 s.d. 2026-T2.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: H.5.
+    PDK (1 komoditas): Pergudangan - jumlah barang dibongkar.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: Sheet 'Pergudangan'.
+      Data tersedia: 2022-T1 s.d. 2026-T2.
+      Catatan: padanan TD2025: H.5.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI I - Penyediaan Akomodasi dan Makan Minum
+----------------------------------------------------------------------------------------------------
+
+I.1  Penyediaan Akomodasi
+    REV (2 komoditas): Hotel bintang, Hotel nonbintang.
+      Rumus: Output ADHB = kuantum x harga; Output ADHK = kuantum x harga tahun dasar; NTB = (1 -
+        rasio KA) x output.
+      Sumber data: VHTL ('LK KATEGORI I'); VHTS ('LK KATEGORI I').
+      Data tersedia: 2021-T1 s.d. 2026-T3.
+      Catatan: seri turunan: KUANTUM = TPK (persen) x KAMAR (sama dengan LK TD2025).
+      Catatan: padanan TD2025: I.1.
+    DEF (2 komoditas): Rumah kos dan sewa, Asrama dan kos (SKTNP).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: SKTNP; Susenas x penduduk ('LK KATEGORI I').
+      Data tersedia: 2023-T1 s.d. 2026-T3.
+      Catatan: seri turunan: OUTPUT = per kapita x penduduk x 3 bulan / 1 juta.
+      Catatan: IH memakai seri referensi bersama (REF_IHP_AKOM).
+      Catatan: padanan TD2025: I.1.
+    PDK (1 komoditas): Kunjungan wisman.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: BPS (berkas K, sheet 'Wisman').
+      Data tersedia: 2022-T1 s.d. 2026-T2.
+      Catatan: padanan TD2025: I.1.
+
+I.2  Penyediaan Makan Minum
+    DEF (2 komoditas): Konsumsi makanan dan minuman jadi, Makan Bergizi Gratis (SPPG).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: Realisasi MBG; Susenas ('LK KATEGORI I').
+      Data tersedia: 2023-T1 s.d. 2026-T3.
+      Catatan: seri turunan: OUTPUT = per kapita x penduduk x 3 bulan / 1 juta x rasio penyesuaian
+        88,65%.
+      Catatan: padanan TD2025: I.2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI J - Informasi dan Komunikasi
+----------------------------------------------------------------------------------------------------
+
+J  Informasi dan Komunikasi
+    EKS (1 komoditas): Telekomunikasi dan informasi.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: SKTNP/operator.
+      Data tersedia: belum ada data.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: K.
+    PDK (2 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Realisasi belanja urusan kominfo
+      - Pemprov, Realisasi belanja urusan kominfo - Pemkab/Pemkot.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: PKP Infokom.
+      Data tersedia: 2026-T1 s.d. 2026-T2.
+      Catatan: padanan TD2025: J.1.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI K - Jasa Keuangan dan Asuransi
+----------------------------------------------------------------------------------------------------
+
+K.1  Jasa Perantara Keuangan
+    DEF (1 komoditas): Bank umum dan BPR.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: OJK/BI.
+      Data tersedia: belum ada data.
+      Catatan: padanan TD2025: L.1.
+
+K.2  Asuransi dan Dana Pensiun
+    EKS (1 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): BPJS Ketenagakerjaan.
+      Rumus: baseline tahun dasar digerakkan indeks (IP: ADHK ikut indeks, ADHB = ADHK x IH/IH
+        dasar; IB: ADHB ikut indeks, ADHK = ADHB / IH x IH dasar); NTB = (1 - rasio KA) x output.
+      Sumber data: BPJS TK ('BPJS Ketenagakerjaan').
+      Data tersedia: 2024-T1 s.d. 2026-T3.
+      Catatan: rasio KA tahun dasar belum diisi untuk sebagian/semua item (isi dari LK Biaya
+        Antara).
+      Catatan: padanan TD2025: L.3.
+
+K.3  Jasa Keuangan Lainnya
+    DEF (9 komoditas; wilayah 6501, 6502, 6503, 6504, 6571): Pegadaian - Kredit yang disalurkan,
+      Pegadaian - Jasa titipan, Pegadaian - Sewa modal, Pegadaian - Biaya administrasi, Pegadaian -
+      Kredit/Kreasi, Pegadaian - Krista, Pegadaian - Krasida, Pegadaian - Jasa payment, Pegadaian -
+      Lainnya.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: Pegadaian ('Sheet4').
+      Data tersedia: 2025-T1 s.d. 2026-T1.
+      Catatan: padanan TD2025: L.2.
+
+K.4  Jasa Penunjang Keuangan
+    Belum ada item/data. Isi bila ada aktivitas, atau tandai NIHIL di sistem.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI L - Real Estat
+----------------------------------------------------------------------------------------------------
+
+L  Real Estat
+    DEF (2 komoditas): Real estat KIPI - pendapatan, Real estat lainnya (SKTNP) - pendapatan.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: PT KIPI; SKTNP.
+      Data tersedia: 2025-T3 s.d. 2026-T3.
+      Catatan: padanan TD2025: M.
+    PDK (3 komoditas): Real estat KIPI - biaya operasional, Real estat KIPI - tenaga kerja, Real
+      estat KIPI - modal kerja.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: PT KIPI.
+      Data tersedia: 2025-T3 s.d. 2026-T3.
+      Catatan: padanan TD2025: M.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI M - Aktivitas Profesional, Ilmiah dan Teknis
+----------------------------------------------------------------------------------------------------
+
+M  Aktivitas Profesional, Ilmiah dan Teknis
+    DEF (1 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Jasa perusahaan (proksi pajak
+      reklame).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: Bapenda kab/kota.
+      Data tersedia: 2025-T1 s.d. 2026-T2.
+      Catatan: padanan TD2025: N.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI N - Aktivitas Penyewaan, Ketenagakerjaan, Agen Perjalanan dan Penunjang Usaha Lainnya
+----------------------------------------------------------------------------------------------------
+
+N  Aktivitas Penyewaan, Ketenagakerjaan, Agen Perjalanan dan Penunjang Usaha Lainnya
+    DEF (1 komoditas): Agen perjalanan, penyewaan dan penunjang usaha (SKTNP).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: belum ada data.
+      Catatan: padanan TD2025: O.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI O - Administrasi Pemerintahan, Pertahanan dan Jaminan Sosial Wajib
+----------------------------------------------------------------------------------------------------
+
+O  Administrasi Pemerintahan, Pertahanan dan Jaminan Sosial Wajib
+    DEF (6 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Belanja pegawai APBD Pemprov,
+      Penyusutan APBD Pemprov, Belanja pegawai APBD Pemkab/Pemkot, Penyusutan APBD Pemkab/Pemkot,
+      Belanja pegawai APBN, Penyusutan APBN.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: BPKAD (berkas O, sheet APBD); DJPb (berkas O, sheet APBN).
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: IH memakai seri referensi bersama (REF_PMTB, REF_UPAH).
+      Catatan: padanan TD2025: P.
+    PDK (3 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Belanja modal APBD Pemprov,
+      Belanja modal APBD Pemkab/Pemkot, Belanja modal APBN.
+      Indikator pendukung, tidak dihitung ke output.
+      Sumber data: BPKAD (berkas O, sheet APBD); DJPb (berkas O, sheet APBN).
+      Data tersedia: 2022-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: P.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI P - Jasa Pendidikan
+----------------------------------------------------------------------------------------------------
+
+P  Jasa Pendidikan
+    DEF (3 komoditas): Pendidikan pemerintah - belanja pegawai, Pendidikan pemerintah - penyusutan,
+      Pendidikan swasta.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: APBD + APBN fungsi pendidikan ('APBD+ APBN'); SKTNP.
+      Data tersedia: 2025-T1 s.d. 2026-T3.
+      Catatan: IH memakai seri referensi bersama (REF_PMTB, REF_UPAH).
+      Catatan: padanan TD2025: Q.1, Q.2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI Q - Jasa Kesehatan dan Kegiatan Sosial
+----------------------------------------------------------------------------------------------------
+
+Q  Jasa Kesehatan dan Kegiatan Sosial
+    DEF (3 komoditas): Kesehatan pemerintah - belanja pegawai, Kesehatan pemerintah - penyusutan,
+      Kesehatan swasta.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: APBD + APBN fungsi kesehatan ('APBD+ APBN'); SKTNP.
+      Data tersedia: 2025-T1 s.d. 2026-T3.
+      Catatan: IH memakai seri referensi bersama (REF_PMTB, REF_UPAH).
+      Catatan: padanan TD2025: R.1, R.2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI R - Kesenian, Hiburan dan Rekreasi
+----------------------------------------------------------------------------------------------------
+
+R  Kesenian, Hiburan dan Rekreasi
+    DEF (1 komoditas; wilayah 6500, 6501, 6502, 6503, 6504, 6571): Kesenian dan hiburan (proksi
+      PBJT).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: Bapenda kab/kota.
+      Data tersedia: 2025-T1 s.d. 2026-T3.
+      Catatan: padanan TD2025: S.2.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI S - Aktivitas Jasa Lainnya
+----------------------------------------------------------------------------------------------------
+
+S  Aktivitas Jasa Lainnya
+    DEF (1 komoditas): Jasa lainnya (SKTNP).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Sumber data: SKTNP.
+      Data tersedia: belum ada data.
+      Catatan: padanan TD2025: T.1.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI T - Aktivitas Rumah Tangga sebagai Pemberi Kerja
+----------------------------------------------------------------------------------------------------
+
+T  Aktivitas Rumah Tangga sebagai Pemberi Kerja
+    DEF (1 komoditas): Jasa rumah tangga sebagai pemberi kerja (PRT).
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: belum ada data.
+      Catatan: padanan TD2025: U.
+
+----------------------------------------------------------------------------------------------------
+KATEGORI U - Aktivitas Badan Internasional dan Badan Ekstra Internasional Lainnya
+----------------------------------------------------------------------------------------------------
+
+U  Aktivitas Badan Internasional dan Badan Ekstra Internasional Lainnya
+    DEF (1 komoditas): Badan internasional.
+      Rumus: Output ADHB = nilai berlaku; Output ADHK = output / IH x IH dasar; NTB ADHB = input
+        (atau (1 - rasio KA) x output); NTB ADHK = (1 - rasio KA dasar) x output ADHK.
+      Data tersedia: belum ada data.
+      Catatan: padanan TD2025: V.
+
+Baris PDRB (TD2010)
+  PDRB = jumlah kategori A s.d. U. PDRB tanpa migas = PDRB - (B.1 + C.1.b).
+  Kelompok 'M,N' dan 'R,S,T,U' hanya dijumlahkan untuk tabel publikasi 17 kategori.
+
+====================================================================================================
+BAGIAN C. TABEL POKOK (format tetap, seperti Excel)
+====================================================================================================
+  Barisnya adalah seluruh pohon lapus, berurutan seperti Excel:
+  - kategori (huruf tebal);
+  - subkategori dan sub-subkategori (menjorok);
+  - kelompok publikasi (bisa ditampilkan atau disembunyikan);
+  - NTB, TOP, SOP, TOP.SOP, PDRB (TD2025) atau PDRB dan PDRB tanpa migas (TD2010).
+  Baris yang belum punya hasil tetap tampil dengan sel kosong.
+  Tab yang tersedia: ADHB, ADHK, distribusi, q-to-q, y-on-y, c-to-c, indeks implisit, laju implisit,
+    sumber pertumbuhan (SoG), output ADHB, dan output ADHK.
+  Rumus turunan:
+  - distribusi = ADHB / PDRB ADHB x 100;
+  - q-to-q = X(t) / X(t-1) x 100 - 100;
+  - y-on-y = X(t) / X(t-4) x 100 - 100;
+  - c-to-c = jumlah triwulan I s.d. t tahun ini / periode sama tahun lalu x 100 - 100;
+  - implisit = ADHB / ADHK x 100;
+  - SoG = perubahan X / PDRB ADHK periode pembanding x 100.
+  Asal angka: lk.v_tabel_pokok (tahap FINAL). Pembanding angka rilis resmi: lk.tabel_pokok_rilis.
+
+====================================================================================================
+BAGIAN D. YANG PERLU DIKONFIRMASI TIM TEKNIS / METODOLOGI
+====================================================================================================
+  1. Rasio KA tahun dasar 2025 (LK Biaya Antara). Sekarang kosong di 17 lapus Put 0. Pilihan: diisi
+     dari SE2026/SUT, atau angka sementara.
+  2. Baris contoh templat di A.1.a dan A.1.b LK Put 0 (EKS Ubi Kayu, Semangka, Melon; DEF Ubi Jalar,
+     Anggrek, Anthurium). Baris ini tidak dimasukkan ke templat dan harus dihapus juga di Excel.
+  3. Pemisahan TUV: T.1 = TUV.1, T.2 = TUV.2, U = TUV.3, V = nihil. Bila PRT tercatat di TUV.1,
+     pindahkan ke U.
+  4. Item tanpa data 2025 (spesies ikan 2019-2021, emas 2019-2022, aluminium 2026) memerlukan
+     jangkar pengganti atau sambungan ke item penerus.
+  5. Metode dan sumber data pajak dan subsidi atas produk (TOP/SOP) untuk Kaltara.
+  6. FBY atau CVM untuk rilis regional TD2025.
+  7. TD2010: angka rilis 2019-2025 untuk diimpor sebagai riwayat; data N, T, U; indeks IBS/IMK
+     2025-T3 dan sesudahnya.
+  8. A.1.e (TD2025): usulan agar kuantum jasa pertanian ditautkan otomatis ke output A.1.a-A.1.d.

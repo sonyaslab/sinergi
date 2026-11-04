@@ -1,0 +1,9 @@
+# data rahasia - JANGAN di-commit
+*TERISI*.xlsx
+*.xlsm
+golden/
+.env
+*.dump
+*.sql.gz
+__pycache__/
+node_modules/
