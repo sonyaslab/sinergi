@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SINERGI (Sistem Neraca Ekonomi Regional Terintegrasi) — skema basis data (PostgreSQL 16)
--- Versi 4 — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
+-- Versi 4 (+ migrasi Alembic s.d. 0002) — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
 -- kategori M,N dan R,S,T,U(,V) terpisah + kelompok publikasi; komoditas dinamis per triwulan;
 -- seri 2010–2045, item dinamis per wilayah/lapus/metode, rasio KA per item,
 -- adjustment 3 tingkat (METODE, REKON, SIMULASI), multi-operator, audit.
@@ -50,8 +50,10 @@ CREATE TABLE sec.pengguna (
   terkunci_sampai  timestamptz,
   terakhir_login   timestamptz,
   dibuat_pada      timestamptz NOT NULL DEFAULT now(),
-  diubah_pada      timestamptz NOT NULL DEFAULT now()
+  diubah_pada      timestamptz NOT NULL DEFAULT now(),
+  totp_langkah_terakhir bigint                    -- migrasi 0002: kode TOTP tidak boleh dipakai ulang
 );
+COMMENT ON COLUMN sec.pengguna.totp_langkah_terakhir IS 'Langkah waktu (unix/30) kode TOTP terakhir yang diterima; kode dengan langkah <= ini ditolak';
 
 CREATE TABLE sec.peran (
   id    smallserial PRIMARY KEY,

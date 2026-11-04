@@ -1,0 +1,40 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  uji:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16.6-bookworm
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+    env:
+      SINERGI_DB_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      SINERGI_DB_URL: postgresql+psycopg://app_rw:rw_ci@localhost:5432/sinergi
+      SINERGI_DB_URL_RO: postgresql+psycopg://app_ro:ro_ci@localhost:5432/sinergi
+      SINERGI_DB_URL_OWNER: postgresql+psycopg://app_owner:owner_ci@localhost:5432/sinergi
+      SINERGI_LINGKUNGAN: uji
+    steps:
+      - uses: actions/checkout@v4
+      - name: Klien PostgreSQL 16 (psql, pg_dump)
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: apps/web/package-lock.json }
+      - run: make install
+      - run: make lint
+      - run: make test
+      - name: Tolak berkas rahasia di repo
+        run: |
+          ! git ls-files | grep -E '(TERISI.*\.xlsx|\.xlsm$|^golden/|^\.env$|\.dump$)'

@@ -95,3 +95,25 @@ Semua endpoint tulis:
 | Round-trip templat | ekspor → impor → hitung = sama; templat kosong dan terisi |
 | API & e2e | alur putaran lengkap; operator lain ditolak; putaran terkunci 423 |
 | Kinerja | 6 wilayah × 140 lapus × 32 triwulan |
+| Sinkron skema | `tests/rls/test_skema_sinkron.py`: `db/schema.sql` + `db/seed_ref.sql` identik dengan hasil migrasi Alembic (pg_dump) |
+
+## 7. Migrasi basis data (Alembic)
+
+- Paket Python `sinergi_api` dipetakan ke folder `apps/api/` (jalur `apps/api/engine/` = modul `sinergi_api.engine`).
+- Migrasi `0001` menjalankan salinan **beku** skema dan seed v4 (`apps/api/migrations/baseline/*.sql`). Berkas beku tidak boleh diubah.
+- Setiap perubahan skema berikutnya = migrasi baru **dan** sinkronisasi `db/schema.sql` (serta `db/seed_ref.sql` bila seed berubah). Uji sinkron skema menggagalkan CI bila keduanya berbeda.
+- Migrasi `0002`: kolom `sec.pengguna.totp_langkah_terakhir` (kode TOTP tidak boleh dipakai ulang, ASVS 2.8.4).
+- Peran login: `app_owner` (migrasi, pemilik tabel), `app_rw` (API/worker, RLS berlaku), `app_ro` (laporan). Hanya `app_rw`/`app_ro` yang diberi `CONNECT` selain pemilik. Compose menjalankan migrasi lewat layanan sekali jalan `migrate`, sehingga kredensial pemilik tidak ada di kontainer `api`/`worker`.
+
+## 8. Autentikasi (F0)
+
+| Langkah | Endpoint | Catatan |
+|---|---|---|
+| Token CSRF | `GET /api/auth/csrf` | cookie `sinergi_csrf` (bertanda tangan HMAC, dibaca JS) + header `X-CSRF-Token` wajib untuk semua POST/PUT/PATCH/DELETE |
+| Sandi | `POST /api/auth/login` | Argon2id; pesan galat sama untuk pengguna tidak ada/sandi salah; 5 gagal → kunci 15 menit (HTTP 429) |
+| TOTP | `POST /api/auth/totp` | wajib semua peran; pendaftaran pertama menampilkan QR (dibuat di server); kode tidak boleh dipakai ulang |
+| Sesi | cookie `sinergi_akses` (15 menit, path `/api`), `sinergi_refresh` (berotasi, path `/api/auth`) | `HttpOnly; Secure; SameSite=Strict`; refresh lama yang dipakai ulang mencabut sesi; idle 60 menit |
+| Profil | `GET /api/auth/saya` | peran, izin, penugasan aktif |
+| Lainnya | `POST /api/auth/refresh`, `/logout`, `/ganti-sandi` | sandi awal wajib diganti (min. 12 karakter) sebelum endpoint lain dapat dipakai |
+
+Alasan perubahan dikirim lewat header `X-Alasan` (UTF-8, *percent-encoded*) dan disimpan ke `app.alasan` untuk trigger audit.

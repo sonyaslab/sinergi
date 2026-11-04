@@ -1,0 +1,72 @@
+# SINERGI — Docker Compose (db, migrate, api, worker, web). Rahasia dari .env (lihat .env.example).
+name: sinergi
+
+x-api-env: &api-env
+  SINERGI_LINGKUNGAN: ${SINERGI_LINGKUNGAN:-produksi}
+  SINERGI_JWT_SECRET: ${SINERGI_JWT_SECRET:?isi SINERGI_JWT_SECRET di .env}
+  SINERGI_FERNET_KEY: ${SINERGI_FERNET_KEY:?isi SINERGI_FERNET_KEY di .env}
+  SINERGI_COOKIE_SECURE: ${SINERGI_COOKIE_SECURE:-true}
+  SINERGI_DB_URL: postgresql+psycopg://app_rw:${SINERGI_DB_PASS_RW}@db:5432/sinergi
+  SINERGI_DB_URL_RO: postgresql+psycopg://app_ro:${SINERGI_DB_PASS_RO}@db:5432/sinergi
+
+services:
+  db:
+    image: postgres:16.6-bookworm
+    container_name: sinergi-db
+    environment:
+      POSTGRES_PASSWORD: ${SINERGI_PG_SUPERUSER_PASSWORD:?isi SINERGI_PG_SUPERUSER_PASSWORD di .env}
+      SINERGI_DB_PASS_OWNER: ${SINERGI_DB_PASS_OWNER:?isi di .env}
+      SINERGI_DB_PASS_RW: ${SINERGI_DB_PASS_RW:?isi di .env}
+      SINERGI_DB_PASS_RO: ${SINERGI_DB_PASS_RO:?isi di .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./deploy/db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"   # hanya lokal (admin/pencadangan); tidak terbuka ke jaringan
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sinergi"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:   # sekali jalan: alembic upgrade head sebagai app_owner
+    build: ./apps/api
+    container_name: sinergi-migrate
+    command: ["python", "-m", "sinergi_api.dbadmin", "migrasi"]
+    environment:
+      SINERGI_DB_URL_OWNER: postgresql+psycopg://app_owner:${SINERGI_DB_PASS_OWNER}@db:5432/sinergi
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: ./apps/api
+    container_name: sinergi-api
+    environment: *api-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  worker:
+    build: ./apps/api
+    container_name: sinergi-worker
+    command: ["python", "-m", "sinergi_api.worker"]
+    environment: *api-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  web:
+    build: ./apps/web
+    container_name: sinergi-web
+    volumes:
+      - ./deploy/nginx/sinergi.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/tls:/etc/nginx/tls:ro
+    ports:
+      - "443:443"
+      - "80:80"
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  db-data:
