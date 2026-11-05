@@ -446,12 +446,14 @@ def _cek_penyesuaian(v: _Kumpul, k: KonteksValidasi, h: HasilWilayah) -> None:
 
 
 def _cek_kunci(v: _Kumpul, k: KonteksValidasi, per_lapus: dict[int, list[Item]]) -> None:
-    """V13 (daun tanpa item dan bukan NIHIL), V14 (TOP/SOP kosong) — memblokir kunci putaran (F4)."""
+    """V13 (daun tanpa item dan bukan NIHIL), V14 (TOP/SOP kosong dan tidak DIKECUALIKAN admin; keputusan 2) —
+    memblokir kunci putaran. NIHIL tidak membebaskan TOP/SOP: pengecualian V14 hanya oleh admin (dikecualikan)."""
     for lid, (kode, jenis) in k.lapus.items():
-        punya = any(it.metode in ("REV", "EKS", "DEF") for it in per_lapus.get(lid, []))
-        if punya or k.status_lapus.get(lid) == "nihil":
+        if any(it.metode in ("REV", "EKS", "DEF") for it in per_lapus.get(lid, [])):
             continue
-        if jenis == "daun":
+        st = k.status_lapus.get(lid)
+        if jenis == "daun" and st != "nihil":
             v.tambah("V13", lid, f"Lapus {kode} belum punya item dan belum ditandai NIHIL.", kunci="-")
-        elif jenis in ("top", "sop"):
-            v.tambah("V14", lid, f"{kode} belum diisi (pajak/subsidi atas produk).", kunci="-")
+        elif jenis in ("top", "sop") and st != "dikecualikan":
+            v.tambah("V14", lid, f"{kode} belum diisi (pajak/subsidi atas produk) dan belum dikecualikan admin.",
+                     kunci="-")

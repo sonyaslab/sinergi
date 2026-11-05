@@ -50,11 +50,13 @@ Admin buka putaran (tahun dasar, triwulan, jenis, cut-off; salin dari putaran su
  → Supervisor: periksa (bandingkan dengan putaran lalu dan rilis), SETUJUI / KEMBALIKAN, putus adjustment
  → Supervisor/analis: Kompilasi + Simulasi (rekonsiliasi laju & implisit) → SETUJUI simulasi
  → Supervisor: KUNCI putaran (V13–V15 harus lolos) → tabel pokok final, ekspor (format sistem dan format LK 02 BPS)
- → Putaran berikutnya disalin dari putaran terkunci (data, item, adjustment)
+ → Putaran berikutnya disalin dari putaran terkunci (data, jangkar, seri referensi; adjustment menjadi draf)
 ```
 
 - Jenis putaran: `BACKCAST` (Put 0 TD2025, 2019Q1–berjalan), `REGULER`, `REVISI` (boleh mengubah triwulan lalu sesuai cakupan), `RILIS`.
-- Putaran terkunci menolak semua penulisan (HTTP 423). Buka kunci hanya oleh admin, wajib beralasan, dan tercatat di audit.
+- Putaran terkunci menolak semua penulisan (HTTP 423). Kunci dan buka kunci wajib beralasan; buka kunci hanya oleh admin; keduanya tercatat di audit.
+- Kunci mensyaratkan V13–V15 lolos, semua lapus berdata disetujui (atau NIHIL/DIKECUALIKAN), simulasi diputus, dan hitung ulang selesai (docs/02 §11 keputusan 20).
+- Perubahan data lapus yang sudah diajukan/disetujui mengembalikannya ke draf (keputusan 19). Sesudah *cut-off*, perubahan data dasar wajib beralasan.
 - Fitur bandingkan dua putaran menampilkan selisih data dasar, NTB, adjustment, dan laju per lapus.
 
 ## 5. Data dasar dan komoditas dinamis

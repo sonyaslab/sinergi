@@ -1,8 +1,9 @@
-"""Endpoint Data Dasar (F3): putaran, grid item x seri, simpan sel, + Komoditas, nonaktif/berlaku/sambung (dengan
+"""Endpoint Data Dasar (F3): grid item x seri, simpan sel, + Komoditas, nonaktif/berlaku/sambung (dengan
 usulan jangkar dari overlap), seri dan tautan item, jangkar, seri referensi, hitung ulang, validasi.
 
 Semua tulis memakai koneksi app_rw ber-RLS (operator hanya lapus/wilayah yang ditugaskan; putaran terkunci -> 423)
-dan memicu hitung ulang otomatis (antrean per wilayah). Pesan tidak memuat angka.
+dan memicu hitung ulang otomatis (antrean per wilayah). Perubahan data/item/jangkar/tautan mengembalikan status lapus
+ke draf (F4, keputusan 19). Daftar putaran: `putaran/router.py`. Pesan tidak memuat angka.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from ..engine.turunan import selesaikan
 from ..engine.umum import bagi, rata_isi, v
 from ..impor import tautan as tt
 from ..master.umum import rapikan, tidak_ada, tidak_valid
+from ..putaran.status import tandai_ubah
 from ..worker.antrean import antrekan
 from ..worker.muat import muat
 from . import validasi_db
@@ -62,19 +64,6 @@ def _cek_tulis(conn: Connection, wilayah: str, lapus_id: int) -> None:
 def _terbuka(p: dict) -> None:
     if p["status"] == "terkunci":
         raise GalatSinergi(423, "PUTARAN_TERKUNCI", "Putaran sudah dikunci. Perubahan tidak dapat disimpan.")
-
-
-# ======================================================================== putaran & periode
-@router.get("/putaran")
-def daftar_putaran(tahun_dasar_id: int | None = None, conn: Connection = Depends(koneksi),
-                   _: Pengguna = Depends(pengguna_aktif)) -> list[dict]:
-    rows = conn.execute(text(
-        "SELECT p.id, p.tahun_dasar_id, t.kode AS tahun_dasar, p.nama, p.jenis, p.status, p.tahun, p.triwulan,"
-        " p.nomor, pa.urut AS awal, pz.urut AS akhir FROM lk.putaran p JOIN ref.tahun_dasar t"
-        " ON t.id = p.tahun_dasar_id JOIN ref.periode pa ON pa.id = p.periode_awal_id JOIN ref.periode pz"
-        " ON pz.id = p.periode_akhir_id WHERE CAST(:td AS int) IS NULL OR p.tahun_dasar_id = :td"
-        " ORDER BY p.tahun DESC, p.triwulan DESC, p.nomor DESC"), {"td": tahun_dasar_id}).mappings().all()
-    return [dict(r) | {"label_awal": _label(r["awal"]), "label_akhir": _label(r["akhir"])} for r in rows]
 
 
 # ======================================================================== grid
@@ -313,6 +302,8 @@ def simpan_nilai(data: SimpanSel, conn: Connection = Depends(koneksi), pengguna:
             " AND n.periode_id = x.per"),
             {"p": data.putaran_id, "i": [s.item_id for s in kosong], "s": [s.seri for s in kosong],
              "per": [per[s.periode] for s in kosong]})
+    ubah = {(items[x.item_id].wilayah_kode.strip(), items[x.item_id].lapus_id) for x in data.perubahan}
+    tandai_ubah(conn, data.putaran_id, ubah, "simpan data dasar")
     for w in sorted({r.wilayah_kode.strip() for r in items.values()}):
         antrekan(conn, data.putaran_id, w, None, "simpan data dasar")
     return {"disimpan": len(isi), "tidak_tersedia": len(tdk), "dikosongkan": len(kosong),
@@ -349,6 +340,7 @@ def simpan_parameter(data: ParamIn, conn: Connection = Depends(koneksi), penggun
             " VALUES (:p, :i, :k, :v, :a, :u) ON CONFLICT (putaran_id, item_id, kode) DO UPDATE SET"
             " nilai = EXCLUDED.nilai, alasan = EXCLUDED.alasan, diubah_oleh = EXCLUDED.diubah_oleh,"
             " diubah_pada = now()"), q)
+    tandai_ubah(conn, data.putaran_id, [(it.wilayah_kode, it.lapus_id)], "ubah jangkar tahun dasar")
     antrekan(conn, data.putaran_id, it.wilayah_kode.strip(), it.lapus_id, "ubah jangkar tahun dasar")
     return {"pesan": "Jangkar tersimpan."}
 
@@ -394,6 +386,7 @@ def _seri_bawaan(conn: Connection, metode: str, diminta: list[str] | None) -> li
 def tambah_item(data: ItemIn, conn: Connection = Depends(koneksi), pengguna: Pengguna = TAMBAH) -> dict:
     """+ Komoditas: nomor berikutnya per metode, masa berlaku, alasan wajib; seri bawaan metode dibuat."""
     p = _putaran(conn, data.putaran_id)
+    _terbuka(p)
     lap = conn.execute(text("SELECT jenis FROM ref.lapus WHERE id = :l AND tahun_dasar_id = :td AND aktif"),
                        {"l": data.lapus_id, "td": p["tahun_dasar_id"]}).scalar()
     if lap not in ("daun", "top", "sop"):
@@ -425,6 +418,7 @@ def tambah_item(data: ItemIn, conn: Connection = Depends(koneksi), pengguna: Pen
     for i, s in enumerate(seri, start=1):
         conn.execute(text("INSERT INTO lk.seri_item (item_id, jenis_seri, urutan) VALUES (:i, :s, :u)"),
                      {"i": iid, "s": s, "u": i})
+    tandai_ubah(conn, data.putaran_id, [(data.wilayah, data.lapus_id)], "tambah komoditas")
     antrekan(conn, data.putaran_id, data.wilayah, data.lapus_id, "tambah komoditas")
     return {"id": iid, "nomor": nomor, "pesan": f"Komoditas ditambahkan sebagai {data.metode} no. {nomor}."}
 
@@ -446,6 +440,7 @@ class ItemUbah(BaseModel):
 def ubah_item(item_id: int, data: ItemUbah, conn: Connection = Depends(koneksi), pengguna: Pengguna = TAMBAH) -> dict:
     """Ubah item: nonaktifkan (riwayat tetap dihitung), masa berlaku, jenis indeks, satuan, nama. Alasan wajib."""
     p = _putaran(conn, data.putaran_id)
+    _terbuka(p)
     it = conn.execute(text("SELECT id, wilayah_kode, lapus_id, metode_kode FROM lk.item WHERE id = :i"
                            " AND tahun_dasar_id = :td"), {"i": item_id, "td": p["tahun_dasar_id"]}).first()
     if it is None:
@@ -473,6 +468,7 @@ def ubah_item(item_id: int, data: ItemUbah, conn: Connection = Depends(koneksi),
                             " WHERE i.id = :i"), {"i": item_id}).one()
     if cek[0] is not None and cek[1] is not None and cek[1] < cek[0]:
         raise tidak_valid("Berlaku sampai harus sesudah berlaku mulai.")
+    tandai_ubah(conn, data.putaran_id, [(it.wilayah_kode, it.lapus_id)], "ubah item")
     antrekan(conn, data.putaran_id, it.wilayah_kode.strip(), it.lapus_id, "ubah item")
     return {"pesan": "Item diperbarui."}
 
@@ -555,6 +551,7 @@ def lihat_usulan(item_id: int, putaran_id: int, penerus_id: int, conn: Connectio
 def sambung(item_id: int, data: SambungIn, conn: Connection = Depends(koneksi), pengguna: Pengguna = TAMBAH) -> dict:
     """Sambungkan item lama ke item penerus (rebasing, docs/04 §3). Mengembalikan usulan jangkar (keputusan 14)."""
     p = _putaran(conn, data.putaran_id)
+    _terbuka(p)
     if item_id == data.penerus_id:
         raise tidak_valid("Item tidak dapat disambung ke dirinya sendiri.")
     lama, baru = _data_item(conn, data.putaran_id, item_id), _data_item(conn, data.putaran_id, data.penerus_id)
@@ -563,6 +560,7 @@ def sambung(item_id: int, data: SambungIn, conn: Connection = Depends(koneksi), 
     _cek_tulis(conn, baru["wilayah"], baru["lapus_id"])
     conn.execute(text("SELECT set_config('app.alasan', :a, true)"), {"a": rapikan(data.alasan)})
     conn.execute(text("UPDATE lk.item SET item_asal_id = :a WHERE id = :b"), {"a": item_id, "b": data.penerus_id})
+    tandai_ubah(conn, data.putaran_id, [(baru["wilayah"], baru["lapus_id"])], "sambung item penerus")
     t0 = [p["tahun_baseline_eks"] * 4 + q for q in range(4)]
     return {"pesan": "Item disambungkan ke penerus. Jangkar item lama tetap wajib diisi (V03).",
             **usulan_jangkar(lama, baru, t0, bool(p["jangkar_dari_data"]))}
@@ -577,6 +575,7 @@ class SeriItemIn(BaseModel):
 @router.put("/data-dasar/item/{item_id}/seri")
 def atur_seri(item_id: int, data: SeriItemIn, conn: Connection = Depends(koneksi), _: Pengguna = TAMBAH) -> dict:
     """Atur baris seri item (tambah seri komponen, mis. TPK/KAMAR). Menghapus baris tidak menghapus nilai."""
+    _terbuka(_putaran(conn, data.putaran_id))
     it = conn.execute(text("SELECT wilayah_kode, lapus_id, metode_kode FROM lk.item WHERE id = :i"),
                       {"i": item_id}).first()
     if it is None:
@@ -593,6 +592,7 @@ def atur_seri(item_id: int, data: SeriItemIn, conn: Connection = Depends(koneksi
 
 
 class SatuanSeriIn(BaseModel):
+    putaran_id: int
     satuan: str | None = Field(default=None, max_length=60)
     catatan: str | None = Field(default=None, max_length=500)
 
@@ -600,11 +600,12 @@ class SatuanSeriIn(BaseModel):
 @router.patch("/data-dasar/item/{item_id}/seri/{seri}")
 def ubah_meta_seri(item_id: int, seri: str, data: SatuanSeriIn, conn: Connection = Depends(koneksi),
                    _: Pengguna = ISI) -> dict:
+    _terbuka(_putaran(conn, data.putaran_id))
     it = conn.execute(text("SELECT wilayah_kode, lapus_id FROM lk.item WHERE id = :i"), {"i": item_id}).first()
     if it is None:
         raise tidak_ada("Item")
     _cek_tulis(conn, it.wilayah_kode.strip(), it.lapus_id)
-    f = data.model_fields_set
+    f = data.model_fields_set - {"putaran_id"}
     conn.execute(text(
         "INSERT INTO lk.seri_item (item_id, jenis_seri, urutan, satuan, catatan) VALUES (:i, :s,"
         " (SELECT coalesce(max(urutan), 0) + 1 FROM lk.seri_item WHERE item_id = :i), :sat, :cat)"
@@ -630,6 +631,7 @@ class TautanIn(BaseModel):
 def atur_tautan(item_id: int, data: TautanIn, conn: Connection = Depends(koneksi), _: Pengguna = ISI) -> dict:
     """Tautkan seri item ke seri referensi, hasil lapus lain, atau rumus baku; sumber kosong = lepas tautan."""
     p = _putaran(conn, data.putaran_id)
+    _terbuka(p)
     it = conn.execute(text("SELECT wilayah_kode, lapus_id, metode_kode FROM lk.item WHERE id = :i"
                            " AND tahun_dasar_id = :td"), {"i": item_id, "td": p["tahun_dasar_id"]}).first()
     if it is None:
@@ -660,6 +662,7 @@ def atur_tautan(item_id: int, data: TautanIn, conn: Connection = Depends(koneksi
              else None, "sid": data.seri_id if data.sumber == "SERI_REFERENSI" else None,
              "lap": data.lapus_sumber_ids or None, "bes": data.besaran if data.sumber == "HASIL_LAPUS" else None,
              "f": data.faktor})
+    tandai_ubah(conn, data.putaran_id, [(it.wilayah_kode, it.lapus_id)], "ubah tautan seri")
     antrekan(conn, data.putaran_id, it.wilayah_kode.strip(), it.lapus_id, "ubah tautan seri")
     return {"pesan": "Tautan diperbarui."}
 
@@ -753,7 +756,7 @@ class HitungIn(BaseModel):
 
 @router.post("/hitung")
 def minta_hitung(data: HitungIn, conn: Connection = Depends(koneksi), _: Pengguna = BACA) -> dict:
-    _putaran(conn, data.putaran_id)
+    _terbuka(_putaran(conn, data.putaran_id))
     jid = antrekan(conn, data.putaran_id, data.wilayah, None, "diminta pengguna")
     return {"job_id": jid, "pesan": "Hitung ulang dijadwalkan."}
 
@@ -792,6 +795,7 @@ class KonfirmasiIn(BaseModel):
 @router.post("/validasi/konfirmasi")
 def konfirmasi(data: KonfirmasiIn, conn: Connection = Depends(koneksi), pengguna: Pengguna = ISI) -> dict:
     """Konfirmasi beralasan atas temuan yang boleh dikonfirmasi (V05); bertahan setelah hitung ulang."""
+    _terbuka(_putaran(conn, data.putaran_id))
     boleh = conn.execute(text("SELECT coalesce((parameter->>'boleh_konfirmasi')::boolean, false) FROM ref.validasi"
                               " WHERE kode = :k"), {"k": data.kode}).scalar()
     if not boleh:

@@ -35,3 +35,10 @@ export function useAksi(segarkan: QueryKey[]) {
   }
   return { jalankan, pesan, setPesan, sibuk };
 }
+
+/** Izin pengguna saat ini (dari profil /api/auth/saya di cache). */
+export function useIzin(): ReadonlySet<string> {
+  const qc = useQueryClient();
+  const izin = qc.getQueryData<{ izin?: string[] }>(["saya"])?.izin;
+  return new Set(izin ?? []);
+}

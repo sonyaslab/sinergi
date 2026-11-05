@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SINERGI (Sistem Neraca Ekonomi Regional Terintegrasi) — skema basis data (PostgreSQL 16)
--- Versi 4 (+ migrasi Alembic s.d. 0005) — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
+-- Versi 4 (+ migrasi Alembic s.d. 0006) — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
 -- kategori M,N dan R,S,T,U(,V) terpisah + kelompok publikasi; komoditas dinamis per triwulan;
 -- seri 2010–2045, item dinamis per wilayah/lapus/metode, rasio KA per item,
 -- adjustment 3 tingkat (METODE, REKON, SIMULASI), multi-operator, audit.
@@ -249,6 +249,7 @@ CREATE TABLE lk.putaran (
   dikunci_oleh      bigint REFERENCES sec.pengguna(id),
   dikunci_pada      timestamptz,
   catatan           text,
+  tanggal_cutoff    timestamptz,                       -- migrasi 0006: sesudah cut-off, ubah data dasar wajib beralasan
   UNIQUE (tahun_dasar_id, tahun, triwulan, nomor)
 );
 
@@ -499,7 +500,7 @@ CREATE TABLE lk.status_lapus (
   wilayah_kode char(4) NOT NULL REFERENCES ref.wilayah(kode),
   lapus_id     integer NOT NULL REFERENCES ref.lapus(id),
   status       text NOT NULL DEFAULT 'belum'
-               CHECK (status IN ('belum','draf','diajukan','disetujui','dikembalikan','nihil')),
+               CHECK (status IN ('belum','draf','diajukan','disetujui','dikembalikan','nihil','dikecualikan')),  -- dikecualikan: migrasi 0006 (V14, admin)
   diperbarui_oleh bigint REFERENCES sec.pengguna(id),
   diperbarui_pada timestamptz NOT NULL DEFAULT now(),
   catatan      text,
@@ -570,8 +571,10 @@ CREATE OR REPLACE FUNCTION lk.tolak_jika_terkunci() RETURNS trigger LANGUAGE plp
 DECLARE v_status text; v_pid bigint;
 BEGIN
   v_pid := CASE WHEN TG_OP = 'DELETE' THEN OLD.putaran_id ELSE NEW.putaran_id END;
+  -- Advisory lock bersama: kunci putaran (eksklusif) menunggu semua tulis yang sedang berjalan selesai.
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('putaran:' || v_pid, 0));
   SELECT status INTO v_status FROM lk.putaran WHERE id = v_pid;
-  IF v_status = 'terkunci' AND coalesce(current_setting('app.izin_buka_kunci', true), '') <> 'ya' THEN
+  IF v_status = 'terkunci' THEN
     RAISE EXCEPTION 'Putaran % terkunci', v_pid USING ERRCODE = 'P0423';
   END IF;
   RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
@@ -669,6 +672,104 @@ CREATE POLICY baca_nilai_ref ON lk.nilai_seri_referensi FOR SELECT USING (sec.ui
 CREATE POLICY tulis_nilai_ref_i ON lk.nilai_seri_referensi FOR INSERT WITH CHECK (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode));
 CREATE POLICY tulis_nilai_ref_u ON lk.nilai_seri_referensi FOR UPDATE USING (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode)) WITH CHECK (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode));
 CREATE POLICY tulis_nilai_ref_d ON lk.nilai_seri_referensi FOR DELETE USING (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode));
+
+-- ---------------------------------------------------------------------
+-- Migrasi 0006 (F4 putaran & alur): cut-off, kunci/buka kunci beralasan, status lapus, putusan penyesuaian,
+-- RLS putaran / status lapus / riwayat / biaya antara. Advisory lock bersama di lk.tolak_jika_terkunci.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION lk.cek_cutoff() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE v_cutoff timestamptz; v_pid bigint;
+BEGIN
+  v_pid := CASE WHEN TG_OP = 'DELETE' THEN OLD.putaran_id ELSE NEW.putaran_id END;
+  SELECT tanggal_cutoff INTO v_cutoff FROM lk.putaran WHERE id = v_pid;
+  IF v_cutoff IS NOT NULL AND now() > v_cutoff
+     AND coalesce(length(trim(current_setting('app.alasan', true))), 0) < 10 THEN
+    RAISE EXCEPTION 'Putaran sudah melewati cut-off; perubahan data dasar wajib beralasan (min. 10 karakter)'
+      USING ERRCODE = 'P0428';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END $$;
+CREATE OR REPLACE FUNCTION lk.cek_putaran() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status = 'terkunci' THEN
+      RAISE EXCEPTION 'Putaran % terkunci', OLD.id USING ERRCODE = 'P0423';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF OLD.status = 'terkunci' AND NEW.status = 'terkunci' THEN
+    RAISE EXCEPTION 'Putaran % terkunci', OLD.id USING ERRCODE = 'P0423';
+  END IF;
+  IF (OLD.status = 'terkunci') <> (NEW.status = 'terkunci') AND sec.uid() IS NOT NULL THEN
+    IF coalesce(length(trim(current_setting('app.alasan', true))), 0) < 10 THEN
+      RAISE EXCEPTION 'Kunci dan buka kunci putaran wajib beralasan (min. 10 karakter)'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.status = 'terkunci' AND NOT sec.punya_izin('putaran.kunci') THEN
+      RAISE EXCEPTION 'Tidak berhak mengunci putaran' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF OLD.status = 'terkunci' AND NOT sec.punya_izin('putaran.buka_kunci') THEN
+      RAISE EXCEPTION 'Tidak berhak membuka kunci putaran' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE OR REPLACE FUNCTION lk.cek_status_lapus() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE v_baru boolean;
+BEGIN
+  v_baru := TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status;
+  IF v_baru AND NEW.status IN ('nihil','dikecualikan','dikembalikan')
+     AND coalesce(length(trim(NEW.catatan)), 0) < 10 THEN
+    RAISE EXCEPTION 'Catatan wajib diisi (min. 10 karakter)' USING ERRCODE = 'check_violation';
+  END IF;
+  IF v_baru AND sec.uid() IS NOT NULL THEN
+    IF NEW.status = 'disetujui' AND NOT sec.punya_izin('lk.setujui') THEN
+      RAISE EXCEPTION 'Tidak berhak menyetujui lapus' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.status = 'dikecualikan' AND NOT sec.punya_izin('putaran.kelola') THEN
+      RAISE EXCEPTION 'Status DIKECUALIKAN hanya oleh admin' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE OR REPLACE FUNCTION lk.cek_putus_penyesuaian() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF sec.uid() IS NULL OR sec.punya_izin('penyesuaian.putus') THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.status IN ('disetujui','ditolak') AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status
+     OR OLD.nilai IS DISTINCT FROM NEW.nilai OR OLD.alasan IS DISTINCT FROM NEW.alasan) THEN
+    RAISE EXCEPTION 'Penyesuaian yang sudah diputus hanya dapat diubah pemegang izin memutus'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER trg_putaran_cek BEFORE UPDATE OR DELETE ON lk.putaran FOR EACH ROW EXECUTE FUNCTION lk.cek_putaran();
+CREATE TRIGGER trg_status_lapus_cek BEFORE INSERT OR UPDATE ON lk.status_lapus FOR EACH ROW EXECUTE FUNCTION lk.cek_status_lapus();
+CREATE TRIGGER trg_penyesuaian_putus BEFORE INSERT OR UPDATE ON lk.penyesuaian FOR EACH ROW EXECUTE FUNCTION lk.cek_putus_penyesuaian();
+CREATE TRIGGER trg_hasil_validasi_kunci BEFORE INSERT OR UPDATE OR DELETE ON lk.hasil_validasi FOR EACH ROW EXECUTE FUNCTION lk.tolak_jika_terkunci();
+CREATE TRIGGER trg_riwayat_status_kunci BEFORE INSERT OR UPDATE OR DELETE ON lk.riwayat_status FOR EACH ROW EXECUTE FUNCTION lk.tolak_jika_terkunci();
+CREATE TRIGGER trg_nilai_item_cutoff BEFORE INSERT OR UPDATE OR DELETE ON lk.nilai_item FOR EACH ROW EXECUTE FUNCTION lk.cek_cutoff();
+CREATE TRIGGER trg_parameter_item_cutoff BEFORE INSERT OR UPDATE OR DELETE ON lk.parameter_item FOR EACH ROW EXECUTE FUNCTION lk.cek_cutoff();
+CREATE TRIGGER trg_nilai_seri_referensi_cutoff BEFORE INSERT OR UPDATE OR DELETE ON lk.nilai_seri_referensi FOR EACH ROW EXECUTE FUNCTION lk.cek_cutoff();
+ALTER TABLE lk.putaran ENABLE ROW LEVEL SECURITY;
+CREATE POLICY baca_putaran ON lk.putaran FOR SELECT USING (true);
+CREATE POLICY tulis_putaran_i ON lk.putaran FOR INSERT WITH CHECK (sec.punya_izin('putaran.kelola'));
+CREATE POLICY tulis_putaran_u ON lk.putaran FOR UPDATE USING (sec.punya_izin('putaran.kelola') OR sec.punya_izin('putaran.kunci') OR sec.punya_izin('putaran.buka_kunci')) WITH CHECK (sec.punya_izin('putaran.kelola') OR sec.punya_izin('putaran.kunci') OR sec.punya_izin('putaran.buka_kunci'));
+CREATE POLICY tulis_putaran_d ON lk.putaran FOR DELETE USING (sec.punya_izin('putaran.kelola'));
+ALTER TABLE lk.status_lapus ENABLE ROW LEVEL SECURITY;
+CREATE POLICY baca_status ON lk.status_lapus FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_status_i ON lk.status_lapus FOR INSERT WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui') OR sec.punya_izin('penyesuaian.putus') OR sec.punya_izin('putaran.kelola'));
+CREATE POLICY tulis_status_u ON lk.status_lapus FOR UPDATE USING (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui') OR sec.punya_izin('penyesuaian.putus') OR sec.punya_izin('putaran.kelola')) WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui') OR sec.punya_izin('penyesuaian.putus') OR sec.punya_izin('putaran.kelola'));
+CREATE POLICY tulis_status_d ON lk.status_lapus FOR DELETE USING (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui') OR sec.punya_izin('penyesuaian.putus') OR sec.punya_izin('putaran.kelola'));
+ALTER TABLE lk.struktur_biaya ENABLE ROW LEVEL SECURITY;
+CREATE POLICY baca_biaya ON lk.struktur_biaya FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_biaya_i ON lk.struktur_biaya FOR INSERT WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui'));
+CREATE POLICY tulis_biaya_u ON lk.struktur_biaya FOR UPDATE USING (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui')) WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui'));
+CREATE POLICY tulis_biaya_d ON lk.struktur_biaya FOR DELETE USING (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui'));
+ALTER TABLE lk.riwayat_status ENABLE ROW LEVEL SECURITY;
+CREATE POLICY baca_riwayat ON lk.riwayat_status FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_riwayat_i ON lk.riwayat_status FOR INSERT WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui') OR sec.punya_izin('penyesuaian.putus') OR sec.punya_izin('putaran.kelola'));
 
 -- =====================================================================
 -- AUDIT — jejak append-only berantai hash

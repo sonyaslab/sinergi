@@ -45,7 +45,7 @@ test: test-oracle test-skema test-api test-web   ## pytest (unit, api, rls) + db
 test-oracle:   ## uji mesin rujukan engine_ref
 	$(PY) -m pytest -q engine_ref
 
-test-skema:    ## DB sinergi_test_skema lewat Alembic, lalu db/test_schema.sql (harus 10 OK)
+test-skema:    ## DB sinergi_test_skema lewat Alembic, lalu db/test_schema.sql (harus 16 OK)
 	$(PY) -m sinergi_api.dbadmin uji-skema
 
 test-api:      ## pytest apps/api (unit, api, rls, sinkron skema) pada DB sinergi_test

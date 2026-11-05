@@ -29,6 +29,7 @@ from typing import Any
 from sqlalchemy import Connection, text
 
 from ..app.galat import GalatSinergi
+from ..putaran.status import tandai_ubah
 from ..worker.antrean import antrekan
 from . import tautan as tt
 from .templat import JANGKAR, Berkas, ItemBerkas, Kunci, Pesan, label_periode
@@ -675,6 +676,11 @@ def terapkan(conn: Connection, r: Rencana, uid: int) -> dict[str, int]:
                 " CASE WHEN :st = 'disetujui' THEN 'disetujui saat impor templat' END)"),
                 {"p": p, "w": w, "l": lapus_id[lap], "t": tahap, "m": met, "j": jenis, "h": harga,
                  "per": periode[u], "v": a["baru"], "al": a["alasan"], "st": a["status"], "u": uid})
+    # Lapus yang data/item/jangkar/tautan/penyesuaiannya berubah kembali ke draf (F4, keputusan 19).
+    sentuh = {(x["kunci"][0], lapus_id[x["kunci"][1]])
+              for x in [*r.item_baru, *r.item_ubah, *r.sel, *r.parameter, *r.tautan]}
+    sentuh |= {(a["kunci"][0], lapus_id[a["kunci"][1]]) for a in r.adj if a["kunci"][2] != "SIMULASI"}
+    tandai_ubah(conn, p, sentuh, f"impor templat {r.nama_berkas}"[:200])
     for w in sorted(r.wilayah):
         antrekan(conn, p, w, None, f"impor templat {r.nama_berkas}"[:200])
     return r.ringkasan()

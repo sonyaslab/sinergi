@@ -63,6 +63,15 @@ export interface OpsiApi {
   alasan?: string;
 }
 
+/** Minta alasan perubahan sesudah cut-off (min. 10 karakter). null = dibatalkan. */
+export function mintaAlasanCutoff(): string | null {
+  for (;;) {
+    const a = window.prompt("Putaran sudah melewati cut-off. Tulis alasan perubahan (min. 10 karakter):", "");
+    if (a === null) return null;
+    if (a.trim().length >= 10) return a.trim();
+  }
+}
+
 export async function api<T>(jalur: string, opsi: OpsiApi = {}, ulang = true): Promise<T> {
   const metode = opsi.metode ?? "GET";
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -87,6 +96,11 @@ export async function api<T>(jalur: string, opsi: OpsiApi = {}, ulang = true): P
   const kode = (isi && typeof isi === "object" && "kode" in isi ? String(isi.kode) : "") || "HTTP";
   if (r.status === 401 && kode === "TOKEN_KEDALUWARSA" && ulang && !TANPA_REFRESH.includes(jalur)) {
     if (await refreshSesi()) return api<T>(jalur, opsi, false);
+  }
+  // Putaran sudah melewati cut-off: perubahan data dasar wajib beralasan (tercatat di audit). Tanya sekali lalu ulangi.
+  if (r.status === 422 && kode === "ALASAN_CUTOFF" && !opsi.alasan) {
+    const alasan = mintaAlasanCutoff();
+    if (alasan) return api<T>(jalur, { ...opsi, alasan }, ulang);
   }
   const pesan =
     (isi && typeof isi === "object" && "pesan" in isi ? String(isi.pesan) : "") ||

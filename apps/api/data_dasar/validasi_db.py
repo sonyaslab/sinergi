@@ -75,15 +75,38 @@ def jalankan(conn: Connection, putaran_id: int, wilayah: str, awal: int, akhir: 
     return tulis_temuan(conn, putaran_id, wilayah, validasi(m, h, k))
 
 
-def periksa_v15(conn: Connection, putaran_id: int, wilayah: str) -> list[str]:
+def temuan_langsung(conn: Connection, putaran_id: int, wilayah: str
+                    ) -> tuple[list[Temuan], MasukanWilayah, HasilWilayah]:
+    """Validasi dihitung saat diminta (bukan dari lk.hasil_validasi yang mungkin belum diperbarui worker).
+
+    Dipakai saat AJUKAN/SETUJUI lapus dan syarat KUNCI putaran (F4). Angka resmi (hanya penyesuaian disetujui);
+    konfirmasi beralasan (lk.konfirmasi_validasi) ikut diperhitungkan.
+    """
+    from ..worker.muat import muat  # impor lambat: worker.antrean mengimpor modul ini
+
+    m, pu = muat(conn, putaran_id, wilayah)
+    h = hitung_wilayah(m)
+    k = muat_konteks(conn, putaran_id, wilayah, pu.awal, pu.akhir)
+    return validasi(m, h, k), m, h
+
+
+def blokir(temuan: list[Temuan], tingkat: str, lapus_id: int | None = None) -> list[Temuan]:
+    """Temuan bertingkat `tingkat` yang belum dikonfirmasi (opsional: satu lapus)."""
+    return [t for t in temuan if t.tingkat == tingkat and t.dikonfirmasi_oleh is None
+            and (lapus_id is None or t.lapus_id == lapus_id)]
+
+
+def periksa_v15(conn: Connection, putaran_id: int, wilayah: str, m: MasukanWilayah | None = None,
+                h: HasilWilayah | None = None) -> list[str]:
     """V15: kode lapus yang hasil tersimpannya berbeda dari hitung ulang (sidik masukan berubah tanpa hitung ulang).
 
     Seharusnya selalu kosong (hitung otomatis tiap simpan; temuan T3); dipakai saat kunci putaran (F4).
     """
-    from ..worker.muat import muat  # impor lambat: worker.antrean mengimpor modul ini
+    if m is None or h is None:
+        from ..worker.muat import muat  # impor lambat: worker.antrean mengimpor modul ini
 
-    m, _ = muat(conn, putaran_id, wilayah)
-    h = hitung_wilayah(m)
+        m, _ = muat(conn, putaran_id, wilayah)
+        h = hitung_wilayah(m)
     simpan = {r[0]: r[1] for r in conn.execute(text(
         "SELECT DISTINCT ON (lapus_id) lapus_id, hash_input FROM lk.hasil_lapus WHERE putaran_id = :p"
         " AND wilayah_kode = :w ORDER BY lapus_id"), {"p": putaran_id, "w": wilayah})}
@@ -94,15 +117,14 @@ def periksa_v15(conn: Connection, putaran_id: int, wilayah: str) -> list[str]:
 
 
 def ringkasan_kunci(conn: Connection, putaran_id: int, wilayah: str) -> dict:
-    """Temuan yang memblokir kunci putaran: V13/V14 dari hasil validasi + V15 dihitung saat diminta."""
-    blokir = [dict(r) for r in conn.execute(text(
-        "SELECT h.kode_validasi AS kode, l.kode AS kode_lapus, h.pesan FROM lk.hasil_validasi h"
-        " JOIN ref.lapus l ON l.id = h.lapus_id WHERE h.putaran_id = :p AND h.wilayah_kode = :w"
-        " AND h.tingkat = 'blokir_kunci' AND h.dikonfirmasi_oleh IS NULL ORDER BY l.urutan"),
-        {"p": putaran_id, "w": wilayah}).mappings()]
-    v15 = periksa_v15(conn, putaran_id, wilayah)
+    """Temuan yang memblokir kunci putaran: V13/V14 (validasi dihitung saat diminta) + V15 (sidik tersimpan)."""
+    ts, m, h = temuan_langsung(conn, putaran_id, wilayah)
+    kode = {r.id: (r.kode, r.urutan) for r in m.pohon}
+    hasil = [{"kode": t.kode, "kode_lapus": kode.get(t.lapus_id, ("?", 0))[0], "pesan": t.pesan}
+             for t in sorted(blokir(ts, "blokir_kunci"), key=lambda t: (kode.get(t.lapus_id, ("", 0))[1], t.kode))]
+    v15 = periksa_v15(conn, putaran_id, wilayah, m, h)
     aktif = conn.execute(text("SELECT aktif FROM ref.validasi WHERE kode = 'V15'")).scalar()
     if v15 and aktif:
-        blokir.append({"kode": "V15", "kode_lapus": ", ".join(v15),
-                       "pesan": "Hasil tersimpan berbeda dari hitung ulang; jalankan hitung ulang."})
-    return {"blokir": blokir, "boleh_kunci": not blokir}
+        hasil.append({"kode": "V15", "kode_lapus": ", ".join(v15),
+                      "pesan": "Hasil tersimpan berbeda dari hitung ulang; jalankan hitung ulang."})
+    return {"blokir": hasil, "boleh_kunci": not hasil}

@@ -1,6 +1,7 @@
 """Pemetaan galat ke HTTP dengan pesan singkat berbahasa Indonesia.
 
 - SQLSTATE P0423 (putaran terkunci)      -> 423
+- SQLSTATE P0428 (lewat cut-off, tanpa alasan) -> 422 ALASAN_CUTOFF
 - SQLSTATE 42501 (RLS / hak akses)       -> 403
 - SQLSTATE 23514 (aturan data / trigger) -> 422
 - SQLSTATE 23505 (duplikat)              -> 409
@@ -22,6 +23,7 @@ log = logging.getLogger("sinergi.galat")
 
 PESAN_SQLSTATE: dict[str, tuple[int, str, str]] = {
     "P0423": (423, "PUTARAN_TERKUNCI", "Putaran sudah dikunci. Perubahan tidak dapat disimpan."),
+    "P0428": (422, "ALASAN_CUTOFF", "Putaran sudah melewati cut-off. Isi alasan perubahan (min. 10 karakter)."),
     "42501": (403, "TIDAK_BERHAK", "Anda tidak berhak mengubah data ini."),
     "23505": (409, "DUPLIKAT", "Data yang sama sudah ada."),
     "23503": (422, "RUJUKAN", "Data rujukan tidak ditemukan atau masih dipakai."),

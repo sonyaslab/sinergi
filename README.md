@@ -29,13 +29,13 @@ Paket ini siap dipakai di Claude Code untuk membangun sistem LK PDRB terintegras
    psql -d sinergi_test -f db/seed_ref.sql
    psql -d sinergi_test -f db/test_schema.sql
    ```
-   Uji dianggap lulus bila muncul 10 baris berawalan "OK".
+   Uji dianggap lulus bila muncul 16 baris berawalan "OK".
 3. Uji mesin rujukan: `python -m pytest engine_ref`.
 4. Buka Claude Code di folder repo. Tempel PROMPT INDUK, lalu jalankan fase F0 sampai F7 berurutan.
 
 Templat TERISI dan berkas LK (.xlsm) bersifat rahasia dan tidak boleh di-commit.
 
-## Menjalankan (status: F3 Data dasar, templat, seri referensi, validasi)
+## Menjalankan (status: F4 Putaran, biaya antara, adjustment, persetujuan, simulasi)
 
 Dengan Docker (server internal):
 
@@ -59,13 +59,19 @@ make dev-web                  # http://localhost:5173 (proksi /api)
 
 Untuk pengembangan lewat `http://localhost` tanpa TLS, setel `SINERGI_COOKIE_SECURE=false` di `.env`.
 
-Uji: `make test` (oracle `engine_ref`, `db/test_schema.sql` 10 OK pada DB hasil Alembic, pytest unit/API/RLS/sinkron skema/impor-ekspor
+Uji: `make test` (oracle `engine_ref`, `db/test_schema.sql` 16 OK pada DB hasil Alembic, pytest unit/API/RLS/sinkron skema/impor-ekspor
 templat, Vitest) dan `make lint`.
 
 Layar F3: menu **Data Dasar** (pilih tahun dasar di header, putaran, wilayah) berisi tab Isian data (grid AG Grid, tempel dari Excel,
 + Komoditas, nonaktif/sambungkan, tautan seri, ikon validasi, kontribusi item), Seri referensi, Impor & ekspor (templat docs/05,
-CSV panjang; pratinjau selisih → terapkan), dan Validasi (V01–V17). Membuka putaran (layar Putaran) dibangun di F4; untuk
-pengembangan, putaran dapat dibuat lewat SQL seperti data demo.
+CSV panjang; pratinjau selisih → terapkan), dan Validasi (V01–V17).
+
+Layar F4: **Putaran & Adjustment** (buka putaran + salin dari putaran sumber, cakupan, cut-off, kunci/buka kunci beralasan,
+status lapus belum → draf → diajukan → disetujui/dikembalikan, NIHIL, DIKECUALIKAN, daftar dan putusan adjustment,
+bandingkan dua putaran), **LK Hitung NTB** (PR → PRE → POST → BENC → FINAL per metode/item, sakelar pratinjau draf, ajukan),
+**Biaya Antara** (rasio KA SE2026/SUT, setujui, terapkan ke RKA_TD), **Kompilasi & Simulasi** (lapus × triwulan, simulasi
+target laju/implisit, setujui simulasi), dan **Beranda** (putaran aktif, heatmap status lapus × wilayah, tugas saya).
+Skenario ujung-ke-ujung: `apps/api/tests/e2e/test_alur_putaran.py`.
 
 ## Golden test (mesin internal)
 

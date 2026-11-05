@@ -58,7 +58,8 @@ bila tidak, teks baku di atas.
 3. Sel kosong pada berkas **tidak menghapus** nilai di sistem, kecuali opsi "kosongkan sel yang kosong di berkas" dicentang (khusus admin).
 4. Teks di kolom angka, kode yang tidak dikenal, lapus di luar kategori sheet, atau seri yang tidak berlaku untuk metode akan ditolak per baris dengan pesan berisi sheet, baris, dan kolom.
 5. Operator hanya dapat mengimpor lapus dan wilayah yang ditugaskan. Baris lain dilewati dengan pesan. Seri referensi hanya dapat dibuat/diubah oleh pemegang `data.tulis_semua`/`master.kelola`, atau operator lapus pemiliknya (seri hasil konversi "ikut item lain").
-6. Putaran terkunci menolak seluruh impor.
+6. Putaran terkunci menolak seluruh impor. Lapus yang data, item, jangkar, tautan, atau penyesuaiannya berubah karena impor
+   kembali berstatus draf (F4, keputusan 19); sesudah *cut-off* alasan otomatis "impor templat <berkas>" dicatat di audit.
 7. Berkas mentah tidak disimpan; `audit.impor_berkas` menyimpan hash, ringkasan, dan pesan.
 8. CSV bentuk panjang juga diterima dengan kolom: `tahun_dasar, kode_wilayah, kode_lapus, metode, no_item, komoditas, kode_seri, satuan, jangkar, periode, nilai, sumber, catatan` (UTF-8; pemisah `,` atau `;`; satu baris = satu nilai; CSV tidak membawa tautan). Seri referensi: CSV `kode_wilayah, kode_referensi, nama, satuan, periode, nilai` atau xlsx yang hanya berisi sheet SERI_REFERENSI.
 9. **Jangkar**: baris RKA → `RKA_TD`, HARGA → `H_TD`, IH → `IH_TD`, R_MARGIN → `R_MARGIN_TD` (`lk.parameter_item`); H_TD/IH_TD diberi alasan "impor templat <berkas>". Tahun dasar tanpa `jangkar_dari_data` (TD2010): baris IH bersatuan "2010=100" yang jangkarnya kosong diberi IH_TD = 100 (keputusan 3), kecuali parameter sudah ada. Templat kosong (ekspor) tidak memuat angka apa pun, termasuk jangkar.

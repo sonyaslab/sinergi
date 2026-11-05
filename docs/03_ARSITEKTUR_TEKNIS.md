@@ -55,13 +55,13 @@ Penamaan teknis:
 | Auth | `POST /auth/login`, `POST /auth/totp`, `POST /auth/refresh`, `POST /auth/logout` |
 | Master (F1) | `GET/POST/PATCH/DELETE /tahun-dasar` (opsi `salin_pohon_dari`); `GET/POST /tahun-dasar/{td}/lapus`, `PATCH/DELETE /lapus/{id}`, `PUT /tahun-dasar/{td}/lapus/urutan` (urutan saudara), `PUT /lapus/{id}/anggota` (kelompok); `/konkordansi`, `/katalog?q=`, `/satuan`, `/sumber-data`, `/wilayah` |
 | Akses (F1) | `/pengguna` (+ `/reset-sandi`, `/reset-totp`, `/buka-kunci`), `/peran`, `/izin`, `/penugasan` (kategori diperluas ke lapus daun), `GET /audit`, `GET /audit/verifikasi` |
-| Putaran | `GET /putaran?tahun_dasar_id=` (F3); `POST /putaran`, `POST /putaran/{id}/kunci`, `/buka-kunci`, `GET /putaran/{a}/banding/{b}` (F4) |
+| Putaran (F4) | `GET /putaran?tahun_dasar_id=`; `POST /putaran` (buka; `sumber_putaran_id` = salin, `periode_awal`, `tanggal_cutoff`); `PATCH /putaran/{id}` (nama, catatan, cut-off); `GET /putaran/{id}/syarat-kunci`; `POST /putaran/{id}/kunci`, `/buka-kunci` (badan `alasan`); `GET /putaran/{a}/banding/{b}?wilayah=` (+ `/data?lapus_id=`) |
 | Data dasar (F3) | `GET /data-dasar/grid?putaran_id=&wilayah=&lapus_id=` (item × seri, nilai, `tidak_tersedia`, nilai seri tertaut/rumus, jangkar, kontribusi item per triwulan, temuan validasi, status antrean); `PUT /data-dasar/nilai` (batch sel; kosong = hapus, `tidak_tersedia`); `PUT /data-dasar/parameter` (jangkar); `POST /data-dasar/item` (+ Komoditas); `PATCH /data-dasar/item/{id}` (nonaktif/berlaku/jenis indeks, alasan wajib); `POST /data-dasar/item/{id}/sambung`, `GET …/usulan-jangkar` (keputusan 14); `PUT /data-dasar/item/{id}/seri`, `PATCH …/seri/{seri}`, `PUT …/tautan`; `GET/POST /seri-referensi`, `PUT /seri-referensi/nilai` |
 | Impor/ekspor (F3) | `POST /impor/templat?putaran_id=&nama=&kosongkan=&setujui_penyesuaian=` (badan = berkas xlsx/csv) → pratinjau; `POST /impor/{id}/terapkan` (berkas yang sama); `GET /ekspor/templat?putaran_id=&tahun_dasar_id=&wilayah=&kosong=`; `GET /ekspor/csv`; `GET /ekspor/seri-referensi`; `POST /impor/lk01`, `POST /impor/rilis` (F6) |
-| Hitung & validasi (F3) | `POST /hitung` (masuk antrean), `GET /hitung/status`; `GET /validasi?putaran_id=&wilayah=&lapus_id=&tingkat=`, `POST /validasi/konfirmasi` (V05), `GET /validasi/kunci` (V13–V15), `GET/PATCH /validasi/aturan[/{kode}]` (admin); `GET /hasil/lapus/{l}` (F4, layar LK Hitung) |
-| Biaya antara | `GET/PUT /struktur-biaya`, `POST /struktur-biaya/terapkan` |
-| Penyesuaian | `GET/POST /penyesuaian`, `POST /penyesuaian/{id}/putus` |
-| Alur | `POST /status/{lapus}/ajukan`, `/setujui`, `/kembalikan`, `/nihil` |
+| Hitung & validasi (F3) | `POST /hitung` (masuk antrean), `GET /hitung/status`; `GET /validasi?putaran_id=&wilayah=&lapus_id=&tingkat=`, `POST /validasi/konfirmasi` (V05), `GET /validasi/kunci` (V13–V15), `GET/PATCH /validasi/aturan[/{kode}]` (admin); `GET /hasil/lapus/{l}?putaran_id=&wilayah=&pratinjau=` (F4, layar LK Hitung); `GET /kompilasi?putaran_id=&wilayah=&pratinjau=` (F4) |
+| Biaya antara (F4) | `GET /struktur-biaya?tahun_dasar_id=&wilayah=&lapus_id=`, `PUT /struktur-biaya`, `DELETE /struktur-biaya/{id}`, `POST /struktur-biaya/setujui`, `POST /struktur-biaya/terapkan` (pratinjau / `terapkan=true`, `hanya_kosong`) |
+| Penyesuaian (F4) | `GET /penyesuaian/jenis`; `GET /penyesuaian?putaran_id=&wilayah=&lapus_id=&tahap=&status=`; `POST /penyesuaian` (upsert; `mode` nilai/target_ntb/target_output/target_laju/target_implisit), `POST /penyesuaian/hitung` (pratinjau nilai), `DELETE /penyesuaian/{id}`; `POST /penyesuaian/putus` (setujui/tolak); `POST /simulasi/setujui` |
+| Alur (F4) | `GET /status?putaran_id=&wilayah=`, `GET /status/ringkasan?putaran_id=` (heatmap), `GET /status/{lapus}/riwayat`; `POST /status/{lapus}/ajukan`, `/setujui` (`putus_penyesuaian`), `/kembalikan`, `/nihil`, `/kecualikan` (admin), `/batal` |
 | Laporan | `GET /tabel-pokok?putaran=&wilayah=&tabel=adhb|adhk|distribusi|qtq|yoy|ctc|implisit|sog&kelompok=tampil|sembunyi`, `GET /dashboard`, `GET /ekspor/tabel-pokok.xlsx`, `GET /ekspor/lk02.xlsx` |
 
 Semua endpoint tulis:
@@ -83,7 +83,8 @@ Semua endpoint tulis:
    periode putaran yang ditulis; hanya penyesuaian `disetujui` yang masuk (keputusan 8a). Putaran terkunci → job
    `gagal` "Putaran terkunci; hasil tidak diubah." (P0423); siklus tautan → `gagal` dengan kode lapus. Pesan tidak
    memuat angka. Job `proses` lebih dari 15 menit diambil ulang. `--sekali` menguras antrean lalu keluar.
-4. Pratinjau penyesuaian draf/diajukan: `antrean.pratinjau()` menghitung tanpa menyimpan (layar LK Hitung, F4).
+4. Pratinjau penyesuaian draf/diajukan: `antrean.pratinjau()` menghitung tanpa menyimpan (layar LK Hitung dan Kompilasi,
+   bantuan target penyesuaian; F4).
 5. Target: satu lapus < 1 detik; satu wilayah penuh (2019–2026) < 30 detik. Terukur: 73 lapus, 274 item, 32 triwulan
    ≈ 0,03 detik hitung.
 
@@ -108,7 +109,8 @@ Semua endpoint tulis:
 | Worker | `tests/worker/test_worker.py`: DB → worker → `lk.hasil_*` identik dengan oracle; draf tidak tersimpan; hash berubah hanya bila masukan berubah; terkunci/siklus gagal rapi; job digabung |
 | Templat & round-trip (F3) | `tests/impor/test_impor_templat.py`: templat KOSONG TD2010/TD2025 diimpor tanpa galat lalu diekspor sama persis per sel; templat sintetis terisi (semua sel kuning, jangkar, REF/RUMUS/MARGIN/"ikut item", penyesuaian) lewat importer → DB → worker = oracle atas pembaca rujukan (1e-9); ekspor → impor ke putaran sama = tanpa perubahan; ekspor → impor ke tahun dasar baru → hitung = sama (selisih 0) untuk semua tahap dan item. Golden: templat TERISI lewat importer = LK untuk 72 lapus (`test_golden.py`, data rahasia; alurnya diuji data palsu di `test_golden_alur.py`) |
 | Validasi (F3) | `tests/unit/test_validasi.py` (aturan V01–V17, ambang/P95, konfirmasi, nonaktif) dan `tests/api/test_data_dasar.py` (grid, simpan sel, + Komoditas, nonaktif, sambung, tautan, seri referensi, hak tulis, 423, konfirmasi V05, V15) |
-| API & e2e | alur putaran lengkap; operator lain ditolak; putaran terkunci 423 |
+| Putaran & alur (F4) | `tests/unit/test_target.py` (bantuan target: nilai balikan dimasukkan ke mesin = target, 1e-9; urutan cari Biaya Antara); `tests/api/test_putaran.py` (buka/salin, cut-off beralasan, status lapus + kembali ke draf, NIHIL/DIKECUALIKAN, penyesuaian + izin + putus, simulasi, Biaya Antara, LK Hitung pratinjau, bandingkan); `db/test_schema.sql` OK 7–10 (alasan/izin kunci, cut-off, status, putusan) |
+| API & e2e | `tests/e2e/test_alur_putaran.py`: buka Put → isi → adjustment → ajukan → setujui → simulasi → kunci (423 untuk semua endpoint tulis + trigger DB) → buka kunci admin → putaran baru tersalin (adjustment draf; pratinjau = angka resmi sumber); operator lain ditolak |
 | Kinerja | 6 wilayah × 140 lapus × 32 triwulan |
 | Sinkron skema | `tests/rls/test_skema_sinkron.py`: `db/schema.sql` + `db/seed_ref.sql` identik dengan hasil migrasi Alembic (pg_dump) |
 
@@ -126,6 +128,12 @@ Semua endpoint tulis:
   Kebijakan RLS tulis `lk.*` dipecah per perintah (INSERT/UPDATE/DELETE): kebijakan `FOR ALL` juga berlaku saat SELECT
   sehingga fungsi izin dievaluasi per baris pada setiap baca (pemuat worker macet pada puluhan ribu nilai). Hak baca tidak
   berubah (kebijakan `baca_*`).
+- Migrasi `0006` (F4): `lk.putaran.tanggal_cutoff` + trigger `lk.cek_cutoff` (nilai, jangkar, seri referensi; P0428);
+  trigger `lk.cek_putaran` (kunci/buka kunci beralasan dan berizin; putaran terkunci tidak dapat diubah/dihapus);
+  `lk.tolak_jika_terkunci` tanpa celah `app.izin_buka_kunci` dan dengan advisory lock bersama per putaran (kunci =
+  eksklusif); kunci juga untuk `lk.hasil_validasi` dan `lk.riwayat_status`; status lapus `dikecualikan` + trigger
+  `lk.cek_status_lapus`; trigger `lk.cek_putus_penyesuaian`; RLS `lk.putaran`, `lk.status_lapus`, `lk.riwayat_status`,
+  `lk.struktur_biaya` (kebijakan tulis per perintah).
 - Peran login: `app_owner` (migrasi, pemilik tabel), `app_rw` (API/worker, RLS berlaku), `app_ro` (laporan). Hanya `app_rw`/`app_ro` yang diberi `CONNECT` selain pemilik. Compose menjalankan migrasi lewat layanan sekali jalan `migrate`, sehingga kredensial pemilik tidak ada di kontainer `api`/`worker`.
 
 ## 8. Autentikasi (F0)
@@ -185,3 +193,23 @@ gabung, pratinjau, `antrekan`).
   dilewati dengan pesan.
 - **Hitung otomatis**: setiap simpan memanggil `antrekan()`; layar memantau `GET /hitung/status` lalu menyegarkan hasil,
   kontribusi, dan ikon validasi.
+
+## 12. Putaran, alur persetujuan, biaya antara, simulasi (F4)
+
+| Modul | Isi |
+|---|---|
+| `apps/api/putaran/router.py` | daftar/buka putaran (salin nilai, jangkar, seri referensi, konfirmasi, penyesuaian → draf), ubah cut-off, syarat dan aksi kunci (advisory lock eksklusif), buka kunci, bandingkan dua putaran |
+| `putaran/status.py` | status lapus (ajukan/setujui/kembalikan/NIHIL/DIKECUALIKAN/batal), riwayat, heatmap; `tandai_ubah()` (lapus kembali draf saat datanya berubah; dipanggil data dasar, impor, penyesuaian, Biaya Antara) |
+| `putaran/penyesuaian.py`, `putaran/target.py` | penyesuaian tiga tahap (upsert, hapus, putus), bantuan target (modul murni, keputusan 18) |
+| `putaran/hasil.py` | `GET /hasil/lapus/{l}` (LK Hitung) dan `GET /kompilasi` (resmi dari `lk.hasil_*` atau pratinjau di memori), setujui simulasi |
+| `putaran/biaya_antara.py` | LK Biaya Antara (`lk.struktur_biaya`), setujui, terapkan rasio KA ke `RKA_TD` (item → lapus → induk) |
+| `data_dasar/validasi_db.py` | `temuan_langsung()` (validasi dihitung saat ajukan/setujui/kunci), `ringkasan_kunci()` (V13/V14 + V15) |
+| `apps/web/src/pages/Putaran.tsx`, `pages/putaran/*` | Putaran & Adjustment: daftar putaran (buka, cut-off, kunci, buka kunci), status lapus, adjustment, bandingkan |
+| `pages/LkHitung.tsx`, `pages/Kompilasi.tsx`, `pages/BiayaAntara.tsx`, `pages/Beranda.tsx` | LK Hitung (sakelar pratinjau), Kompilasi & Simulasi, Biaya Antara, heatmap status lapus × wilayah dan tugas saya |
+| `components/DialogPenyesuaian.tsx`, `components/PemilihPutaran.tsx`, `lib/putaran.ts` | dialog 4 cara isi + alasan, pemilih putaran/wilayah bersama, aturan tombol status, laju/implisit |
+
+- **Putaran terkunci menolak semua tulis.** Tabel per putaran ditolak trigger (P0423 → 423); tabel milik tahun dasar (item,
+  seri item, tautan) ditolak API bila putaran pada permintaan terkunci; impor ditolak seluruhnya. `lk.struktur_biaya` milik
+  tahun dasar (bukan putaran); Terapkan ke putaran terkunci ditolak.
+- **Cut-off**: klien meminta alasan saat server membalas `ALASAN_CUTOFF`, lalu mengulang permintaan dengan header `X-Alasan`.
+- **Pratinjau** hanya di LK Hitung dan Kompilasi (keputusan 8a); tabel pokok, dashboard, dan ekspor tetap dari `lk.hasil_*`.

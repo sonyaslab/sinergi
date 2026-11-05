@@ -124,7 +124,8 @@ Seri: `OUT_ADHB`, `NTB_ADHB` (opsional), `IH`, `RKA` (opsional).
 - Bantuan input: "target laju y-on-y" → adj = NTB(t−4) × (1 + g/100) − NTB kompilasi; "target implisit" → adj = target implisit × NTB ADHK ÷ 100 − NTB ADHB
 
 Semua penyesuaian wajib beralasan (min. 10 karakter) dan hanya status `disetujui` yang masuk angka final
-(`lk.hasil_*`). Pratinjau draf/diajukan dihitung saat diminta dan tidak disimpan (keputusan 8a §11).
+(`lk.hasil_*`). Pratinjau draf/diajukan dihitung saat diminta dan tidak disimpan (keputusan 8a §11). Bantuan target
+untuk ADJ1–ADJ4 membalik rumus tahap yang sama (keputusan 18 §11).
 
 ## 7. Rumus turunan dan tautan (`lk.tautan_seri`)
 
@@ -201,7 +202,7 @@ Setiap baris hasil menyimpan `versi_mesin` dan `hash_input`, sehingga tidak ada 
 
 ---
 
-## 11. Keputusan metodologi 5 November 2026 (berlaku mulai F2; keputusan 14–17 di F3)
+## 11. Keputusan metodologi 5 November 2026 (berlaku mulai F2; keputusan 14–17 di F3, 18–21 di F4)
 
 Keputusan berikut dicatat di master/skema (migrasi 0003 dan 0004). Sejak F2, rumusnya sudah diterapkan di mesin
 produksi dan `engine_ref`, beserta uji unit dan golden, dan bagian 1–10 di atas sudah memuatnya.
@@ -209,15 +210,15 @@ produksi dan `engine_ref`, beserta uji unit dan golden, dan bagian 1–10 di ata
 | No | Keputusan | Sudah di master/skema | Diterapkan di |
 |---|---|---|---|
 | 1 | **TOP/SOP = lapus berisi item**, bukan isian langsung (LK 01 TD2025 juga mencantumkannya di daftar industri). Konsumsi antara = 0, jadi NTB = output. Pajak berbasis nilai (PPN, PBJT, bea masuk): DEF. Cukai dan subsidi per unit (BBM, LPG, listrik, pupuk): REV, volume × tarif atau subsidi per unit tahun dasar. | TOP/SOP boleh punya item dan penugasan | F2 ✓ (KA = 0, agregasi), F3 ✓ (item: + Komoditas, sheet templat `TOP_SOP`) |
-| 2 | **V14** tetap memblokir kunci putaran, kecuali admin memberi status `dikecualikan` dengan catatan wajib (agar Put 0 tetap bisa dikunci). | — | F4 |
+| 2 | **V14** tetap memblokir kunci putaran, kecuali admin memberi status `dikecualikan` dengan catatan wajib (agar Put 0 tetap bisa dikunci). NIHIL tidak membebaskan TOP/SOP. | status `dikecualikan` (0006) | F4 ✓ (V14, `POST /status/{lapus}/kecualikan`, trigger izin) |
 | 3 | **Jangkar menurut tahun dasar:** `ref.tahun_dasar.jangkar_dari_data` (TD2025 = ya, TD2010 = tidak). Bila tidak: V03 mewajibkan jangkar untuk semua item, dan tahun baseline hanya titik awal rantai EKS, tidak pernah sumber jangkar. Untuk DEF TD2010, `RKA_TD` diambil dari parameter, bukan rasio tahun baseline (perilaku `engine_ref` lama salah untuk TD2010). Templat TD2010 mengisi IH dasar = 100 untuk seri bersatuan "2010=100". | kolom `jangkar_dari_data` | F2 ✓ (`engine_ref` + mesin), F3 ✓ (impor templat: IH "2010=100" tanpa jangkar = 100; V03) |
 | 4 | **Margin G.2 (TD2010):** output lapus barang diambil dari tahap **BENC**, bukan FINAL (agar G tidak berubah sendiri saat simulasi lapus lain). ADHB memakai rasio margin triwulan berjalan, ADHK memakai rasio margin tahun dasar. Baris impor memakai rumus baru `MARGIN_X_IMPOR` = R × V_IMPOR (× kurs bila US$) × faktor. | `MARGIN_X_IMPOR`, `R_MARGIN_TD`, seri `KURS` (migrasi 0004) | F2 ✓ |
 | 5 | **"Ikut item lain"** (mis. IH IMK ikut IBS, harga ternak) menjadi **seri referensi**; jenis seri referensi menerima `harga`; importer mengonversi otomatis. | `lk.seri_referensi.jenis` `harga`, `lapus_pemilik_id` (0005) | F3 ✓ (seri `REF_<SERI>_<LAPUS>_<METODE><NO>` milik lapus sumber; sumber dan pengikut ditautkan) |
 | 6 | **A.1.e** tetap mengikuti LK resmi agar identik dengan LK Put 0. Bila T4 disetujui, perlu kode rumus baru `RASIO_X_HASIL`. | — | — |
 | 7 | **PDRB tanpa migas** di kedua tahun dasar = PDRB − Σ NTB lapus `is_migas`, dibaca dari master (bukan kode tetap). | baris `PDRB.NM` TD2025 | F2 ✓ |
-| 8 | **Pratinjau adjustment** draf/diajukan di layar LK Hitung, dihitung di layar saja, tidak disimpan, berlabel "PRATINJAU – belum resmi", tidak muncul di tabel pokok/dashboard/ekspor. **Ditegaskan (a): hanya tampilan.** Worker hanya menulis penyesuaian `disetujui` ke `lk.hasil_*`; pratinjau memakai draf/diajukan/disetujui tanpa disimpan. | — | F2 ✓ (mesin/worker), F4 (layar) |
+| 8 | **Pratinjau adjustment** draf/diajukan di layar LK Hitung, dihitung di layar saja, tidak disimpan, berlabel "PRATINJAU – belum resmi", tidak muncul di tabel pokok/dashboard/ekspor. **Ditegaskan (a): hanya tampilan.** Worker hanya menulis penyesuaian `disetujui` ke `lk.hasil_*`; pratinjau memakai draf/diajukan/disetujui tanpa disimpan. | — | F2 ✓ (mesin/worker), F4 ✓ (LK Hitung, Kompilasi: sakelar pratinjau) |
 | 9 | **Ambang validasi** dapat diatur per lapus; opsi kalibrasi otomatis ambang = P95 riwayat 2019–2025 (median P95 y-on-y NTB ADHK Put 0 = 11,3%; 12 lapus rutin > 30%). | `ref.validasi.parameter` (0005) | F3 ✓ (lihat keputusan 16) |
-| 10 | **Pembanding y-on-y dari rilis TD2010** bila periode pembanding tidak ada di putaran: rilis terbaru yang tanggalnya ≤ tanggal *cut-off* putaran; satu tahun pembanding memakai satu versi rilis (penting untuk c-to-c). Rilis TD2010 tidak pernah menjadi pembanding TD2025. Perlu kolom `tanggal_rilis`, `status_angka`, `tanggal_cutoff`. | — | F4/F5/F6 |
+| 10 | **Pembanding y-on-y dari rilis TD2010** bila periode pembanding tidak ada di putaran: rilis terbaru yang tanggalnya ≤ tanggal *cut-off* putaran; satu tahun pembanding memakai satu versi rilis (penting untuk c-to-c). Rilis TD2010 tidak pernah menjadi pembanding TD2025. Perlu kolom `tanggal_rilis`, `status_angka`, `tanggal_cutoff`. | `lk.putaran.tanggal_cutoff` (0006) | F4 ✓ (cut-off), F5/F6 (pembanding rilis) |
 | 11 | **ADHK margin = arus barang:** Output ADHK margin = rasio margin tahun dasar (`R_MARGIN_TD`) × Σ Output ADHK BENC lapus barang × faktor; baris IH item margin barang tidak dipakai. TD2025 tanpa parameter: rata-rata tertimbang R pada T₀. | `lk.parameter_item.kode` + `R_MARGIN_TD` (0004) | F2 ✓ |
 | 12 | **ADHK margin impor:** R_TD × (V_IMPOR × KURS ÷ IH × ĪH) × faktor (impor harga konstan dideflasi IH). KURS = seri komponen DEF baru, boleh ditautkan ke seri referensi; item tanpa seri KURS = 1. | `ref.jenis_seri` DEF `KURS` (0004) | F2 ✓ |
 | 13 | **Masa berlaku item:** nilai di luar `periode_mulai`–`periode_selesai` dianggap tidak ada sebelum hitung (termasuk jangkar dan rantai EKS). | — | F2 ✓ |
@@ -225,6 +226,29 @@ produksi dan `engine_ref`, beserta uji unit dan golden, dan bagian 1–10 di ata
 | 15 | **Penyesuaian dari templat** (sheet PENYESUAIAN) masuk sebagai **draf**; pemegang izin `penyesuaian.putus` boleh memilih "setujui penyesuaian dari berkas" (tercatat di audit). Nilai yang berubah kembali menjadi draf. Simulasi tidak diimpor. | — | F3 ✓ |
 | 16 | **Ambang V08 bawaan:** 30% untuk q-to-q dan y-on-y volume (NTB ADHK) dan implisit NTB. Admin dapat mengubah per lapus (`per_lapus` = `"TD2025:A.3"`) atau menyalakan kalibrasi P95 2019–2025 per lapus (min. 8 titik; ambang = maks(P95, batas bawah), batas bawah = ambang tetap bila `batas_bawah_persen` kosong). V11 bawaan 1%. V06 toleransi 0,5. | `ref.validasi.parameter` (0005) | F3 ✓ |
 | 17 | **DEF TD2025 memakai RKA tanpa NTB_ADHB tahun dasar** (RKA_TD terhitung 1 → NTB ADHK = 0) **dijaga validasi**, rumus tidak diubah: V02 (blokir ajukan) meminta NTB_ADHB tahun dasar diisi atau metode diganti. | — | F3 ✓ (V02) |
+| 18 | **Bantuan target penyesuaian** (dialog nilai / target NTB / target output / target laju y-on-y / target implisit): nilai penyesuaian dihitung dengan **membalik rumus §6 pada tahap yang sama**; yang disimpan tetap nilai penyesuaian (rumus mesin tidak berubah). ADJ1/ADJ2/SC: adj = (target NTB − NTB PRE metode tanpa adj ini) ÷ r, r = NTB PR ÷ Output PR metode; ADJ3: adj = (target ÷ NTB PRE − 1) × Output PRE (= (target − NTB PRE) ÷ r PRE); ADJ4_NTB: target − NTB POST; ADJ4_OUTPUT: hanya nilai atau target output (target − Output POST); SIM_NTB: target − NTB BENC (= rumus §6). Target laju: target NTB = NTB tahap yang sama pada t−4 × (1 + g/100); target implisit (hanya ADHB): target NTB ADHB = implisit × NTB ADHK tahap yang sama pada t ÷ 100. Dihitung dari **pratinjau** (draf + diajukan + disetujui) tanpa penyesuaian berkunci sama; r = 0 → galat (isi nilai). | — | F4 ✓ (`putaran/target.py`, `POST /penyesuaian/hitung`) |
+| 19 | **Perubahan sesudah diajukan/disetujui**: setiap perubahan data dasar, item, jangkar, tautan, atau penyesuaian METODE/REKON sebuah lapus (termasuk lewat impor dan Terapkan Biaya Antara) **mengembalikan status lapus ke draf** (persetujuan gugur, tercatat di riwayat); penyesuaian yang sedang diajukan ikut kembali draf. Mengubah nilai penyesuaian mengembalikannya ke draf. | `lk.riwayat_status` | F4 ✓ |
+| 20 | **Syarat kunci putaran** (selain V13–V15): untuk setiap wilayah yang punya item/penyesuaian/status, semua lapus berdata yang punya item atau penyesuaian METODE/REKON **disetujui**, simulasi sudah diputus, dan antrean hitung kosong. Wilayah tanpa item tidak diperiksa (Put 0 hanya 6500). | — | F4 ✓ (`GET /putaran/{id}/syarat-kunci`) |
+| 21 | **Salin ke putaran baru**: nilai data dasar, jangkar, seri referensi, konfirmasi validasi, dan penyesuaian (kecuali ditolak) disalin; **semua penyesuaian menjadi draf** dan harus disetujui ulang; status lapus dimulai 'belum'. Item, seri item, dan tautan milik tahun dasar (dipakai bersama antarputaran). | — | F4 ✓ (`POST /putaran`) |
+
+Aturan teknis F4 (alur putaran; tidak mengubah rumus, tercatat agar dapat ditinjau):
+- Status lapus: belum → draf (otomatis saat data lapus berubah) → diajukan (lk.ajukan, operator lapus; diblokir temuan
+  `blokir_ajukan` yang belum dikonfirmasi, dihitung saat diminta) → disetujui (lk.setujui; penyesuaian yang diajukan harus
+  diputus dulu atau sekaligus) / dikembalikan (catatan wajib). NIHIL: daun tanpa item (operator lapus atau pemeriksa,
+  catatan wajib). DIKECUALIKAN: TOP/SOP tanpa item, hanya admin (`putaran.kelola`), catatan wajib. Izin dan catatan juga
+  ditegakkan trigger `lk.cek_status_lapus`.
+- Penyesuaian METODE/REKON diajukan bersama lapus dan diputus pemegang `penyesuaian.putus` (trigger
+  `lk.cek_putus_penyesuaian`); SIMULASI diisi pemegang `simulasi.edit` dan disetujui lewat "Setujui simulasi". Hanya
+  `disetujui` masuk angka resmi; CT tetap pembanding (V11).
+- Kunci/buka kunci wajib beralasan (≥ 10 karakter, `app.alasan`, tercatat di audit) dan berizin (`putaran.kunci` /
+  `putaran.buka_kunci`), ditegakkan trigger `lk.cek_putaran`. Kunci memegang advisory lock eksklusif per putaran; trigger
+  kunci memegang advisory lock bersama, sehingga tidak ada tulis yang lolos di antara pemeriksaan syarat dan kunci.
+- Cut-off (`lk.putaran.tanggal_cutoff`): sesudah cut-off, perubahan nilai data dasar, jangkar, dan seri referensi wajib
+  beralasan (trigger `lk.cek_cutoff`, SQLSTATE P0428 → 422 `ALASAN_CUTOFF`; layar meminta alasan lalu mengulang).
+- Biaya Antara: rasio KA hanya dari baris `disetujui`; urutan cari item → lapus item → induk (subkategori, kategori);
+  diterapkan sebagai `RKA_TD` item REV/EKS/DEF lapus daun untuk satu putaran (opsi hanya yang kosong).
+- Item, seri item, dan tautan milik tahun dasar; perubahan item lewat putaran terkunci ditolak di API (423). Perubahan item
+  bersama di putaran terbuka tidak mengubah hasil tersimpan putaran terkunci (tulis hasil ditolak trigger).
 
 Aturan teknis F3 (data dasar dan validasi; tidak mengubah rumus, tercatat agar dapat ditinjau):
 - Validasi memakai tahap BENC per lapus; V09/V10 (lapus) dan V02/V10 (item) dirangkum per baris (jumlah dan rentang triwulan),

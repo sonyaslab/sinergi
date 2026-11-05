@@ -110,3 +110,55 @@ DO $$ DECLARE n int; BEGIN
   IF n > 0 THEN RAISE EXCEPTION 'GAGAL: rantai hash audit putus (%)', n; END IF;
   RAISE NOTICE 'OK 6b: rantai hash audit utuh';
 END $$;
+-- 7) Migrasi 0006: kunci/buka kunci putaran wajib beralasan dan berizin (konteks aplikasi)
+SET ROLE app_test;
+BEGIN;
+SELECT set_config('app.user_id', (SELECT id::text FROM sec.pengguna WHERE username='sup'), true);
+DO $$ BEGIN
+  UPDATE lk.putaran SET status = 'terbuka';
+  RAISE EXCEPTION 'GAGAL: buka kunci tanpa alasan diterima';
+EXCEPTION WHEN check_violation THEN RAISE NOTICE 'OK 7a: buka kunci wajib beralasan'; END $$;
+SELECT set_config('app.alasan', 'koreksi sesudah rilis', true);
+DO $$ BEGIN
+  UPDATE lk.putaran SET status = 'terbuka';
+  RAISE EXCEPTION 'GAGAL: supervisor dapat membuka kunci';
+EXCEPTION WHEN insufficient_privilege THEN RAISE NOTICE 'OK 7b: buka kunci hanya izin putaran.buka_kunci'; END $$;
+COMMIT;
+
+-- 8) Sesudah cut-off, perubahan data dasar wajib beralasan (P0428)
+RESET ROLE;
+UPDATE lk.putaran SET status = 'terbuka', tanggal_cutoff = now() - interval '1 day';
+SET ROLE app_test;
+BEGIN;
+SELECT set_config('app.user_id', (SELECT id::text FROM sec.pengguna WHERE username='op.a'), true);
+DO $$ BEGIN
+  UPDATE lk.nilai_item SET nilai = 1500 WHERE jenis_seri = 'KUANTUM';
+  RAISE EXCEPTION 'GAGAL: ubah sesudah cut-off tanpa alasan diterima';
+EXCEPTION WHEN SQLSTATE 'P0428' THEN RAISE NOTICE 'OK 8: sesudah cut-off ubah data wajib beralasan'; END $$;
+SELECT set_config('app.alasan', 'koreksi data sesudah cut-off', true);
+UPDATE lk.nilai_item SET nilai = 1500 WHERE jenis_seri = 'KUANTUM';
+COMMIT;
+
+-- 9) Status lapus: NIHIL wajib catatan; DIKECUALIKAN hanya admin. 10) Putusan penyesuaian hanya penyesuaian.putus
+BEGIN;
+SELECT set_config('app.user_id', (SELECT id::text FROM sec.pengguna WHERE username='op.a'), true);
+DO $$ BEGIN
+  INSERT INTO lk.status_lapus (putaran_id, wilayah_kode, lapus_id, status)
+  SELECT (SELECT id FROM lk.putaran LIMIT 1), '6500', l.id, 'nihil' FROM ref.lapus l WHERE l.kode='A.1.a' AND l.tahun_dasar_id=2;
+  RAISE EXCEPTION 'GAGAL: NIHIL tanpa catatan diterima';
+EXCEPTION WHEN check_violation THEN RAISE NOTICE 'OK 9a: NIHIL wajib catatan'; END $$;
+DO $$ BEGIN
+  INSERT INTO lk.status_lapus (putaran_id, wilayah_kode, lapus_id, status, catatan)
+  SELECT (SELECT id FROM lk.putaran LIMIT 1), '6500', l.id, 'dikecualikan', 'data pajak belum ada' FROM ref.lapus l
+  WHERE l.kode='A.1.a' AND l.tahun_dasar_id=2;
+  RAISE EXCEPTION 'GAGAL: operator dapat mengecualikan';
+EXCEPTION WHEN insufficient_privilege THEN RAISE NOTICE 'OK 9b: DIKECUALIKAN hanya admin'; END $$;
+DO $$ BEGIN
+  INSERT INTO lk.penyesuaian (putaran_id, wilayah_kode, lapus_id, tahap, metode_kode, jenis_kode, harga, periode_id, nilai, alasan, status)
+  SELECT (SELECT id FROM lk.putaran LIMIT 1), '6500', l.id, 'METODE', 'REV', 'ADJ1', 'CP', (SELECT id FROM ref.periode WHERE tahun=2025 AND triwulan=1), 10,
+         'penyesuaian cakupan uji', 'disetujui'
+  FROM ref.lapus l WHERE l.kode='A.1.a' AND l.tahun_dasar_id=2;
+  RAISE EXCEPTION 'GAGAL: operator dapat menyetujui penyesuaian';
+EXCEPTION WHEN insufficient_privilege THEN RAISE NOTICE 'OK 10: putusan penyesuaian hanya izin penyesuaian.putus'; END $$;
+COMMIT;
+RESET ROLE;

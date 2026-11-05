@@ -3,7 +3,7 @@
     python -m sinergi_api.dbadmin reset            # buat ulang DB `sinergi` + alembic upgrade head
     python -m sinergi_api.dbadmin migrasi          # alembic upgrade head saja
     python -m sinergi_api.dbadmin reset --db sinergi_test
-    python -m sinergi_api.dbadmin uji-skema        # DB sinergi_test_skema + db/test_schema.sql (10 OK)
+    python -m sinergi_api.dbadmin uji-skema        # DB sinergi_test_skema + db/test_schema.sql (16 OK)
 
 Kata sandi peran diambil dari URL koneksi SINERGI_DB_URL (app_rw), SINERGI_DB_URL_RO (app_ro), dan
 SINERGI_DB_URL_OWNER (app_owner). Superuser: SINERGI_DB_ADMIN_URL (hanya untuk membuat peran dan DB).
@@ -67,7 +67,7 @@ def buat_ulang_db(p: Pengaturan, nama: str) -> None:
             sql.Identifier(nama), sql.Identifier(rw), sql.Identifier(ro)))
 
 
-def uji_skema(p: Pengaturan, berkas: Path, nama: str = "sinergi_test_skema", harap_ok: int = 10) -> int:
+def uji_skema(p: Pengaturan, berkas: Path, nama: str = "sinergi_test_skema", harap_ok: int = 16) -> int:
     """Buat DB lewat migrasi Alembic lalu jalankan db/test_schema.sql (psql, superuser). Harus muncul N baris OK."""
     reset(p, nama)
     admin = make_url(url_admin()).set(drivername="postgresql", database=nama)

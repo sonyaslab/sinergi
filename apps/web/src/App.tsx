@@ -5,17 +5,25 @@ import { Layout } from "./components/Layout";
 import { PenyediaTahunDasar } from "./konteks/TahunDasar";
 import { menuUntuk } from "./menu";
 import { Beranda } from "./pages/Beranda";
+import { BiayaAntara } from "./pages/BiayaAntara";
 import { DataDasar } from "./pages/DataDasar";
 import { GantiSandi } from "./pages/GantiSandi";
 import { Login } from "./pages/Login";
 import { JejakAudit } from "./pages/JejakAudit";
+import { Kompilasi } from "./pages/Kompilasi";
+import { LkHitung } from "./pages/LkHitung";
 import { MasterData } from "./pages/MasterData";
 import { PenggunaAkses } from "./pages/PenggunaAkses";
+import { PutaranAdjustment } from "./pages/Putaran";
 import { Segera } from "./pages/Segera";
 
 // Layar yang sudah dibangun; menu lain menampilkan "dibangun pada fase Fx".
 const HALAMAN: Record<string, () => JSX.Element> = {
   "/data-dasar": () => <DataDasar />,
+  "/lk-hitung": () => <LkHitung />,
+  "/biaya-antara": () => <BiayaAntara />,
+  "/putaran": () => <PutaranAdjustment />,
+  "/kompilasi": () => <Kompilasi />,
   "/master": () => <MasterData />,
   "/pengguna": () => <PenggunaAkses />,
   "/audit": () => <JejakAudit />,

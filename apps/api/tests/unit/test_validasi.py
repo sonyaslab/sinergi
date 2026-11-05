@@ -65,7 +65,8 @@ def jalankan(data: dict[int, list[Item]], adj: dict[int, list[Penyesuaian]] | No
     inf.update(info or {})
     k = KonteksValidasi("TD2025", tahun_dasar, AWAL, AKHIR, inf, KODE,
                         {kd: AturanValidasi(t, dict(PARAM.get(kd, {}))) for kd, t in TINGKAT.items()} | (aturan or {}),
-                        WAJIB, adj_info or [], {2: "nihil", 3: "nihil", 4: "nihil"} if status is None else status,
+                        WAJIB, adj_info or [],
+                        {2: "dikecualikan", 3: "dikecualikan", 4: "nihil"} if status is None else status,
                         konfirmasi or {})
     return validasi(m, h, k)
 
@@ -214,6 +215,8 @@ def test_v13_v14_lapus_tanpa_item():
     assert [t.lapus_id for t in kode(ts, "V13")] == [4]
     assert {t.lapus_id for t in kode(ts, "V14")} == {2, 3}
     ts = jalankan({1: [rev(1)]}, status={4: "nihil", 2: "nihil", 3: "nihil"})
+    assert not kode(ts, "V13") and {t.lapus_id for t in kode(ts, "V14")} == {2, 3}  # NIHIL tidak membebaskan V14
+    ts = jalankan({1: [rev(1)]}, status={4: "nihil", 2: "dikecualikan", 3: "dikecualikan"})
     assert not kode(ts, "V13") and not kode(ts, "V14")
 
 
