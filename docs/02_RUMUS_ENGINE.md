@@ -7,6 +7,10 @@ Spesifikasi wajib mesin hitung. Untuk TD2025, rumus ini identik dengan LK Excel 
 
 TD2010 memakai mesin yang sama. Bedanya ada pada **jangkar tahun dasar** (bagian 2) dan **rumus turunan** (bagian 7).
 
+Mesin produksi: `apps/api/engine` (modul murni). Oracle: `engine_ref/lk_engine.py` (per lapus sampai BENC),
+`engine_ref/turunan.py` (rumus turunan dan tautan), `engine_ref/kompilasi.py` (tingkat wilayah: graf tautan,
+simulasi, agregasi, tabel turunan). Golden test: mesin produksi = oracle, relatif ≤ 1e-9.
+
 Setiap rumus diikuti asal angkanya di basis data (`db/schema.sql`).
 
 ---
@@ -54,14 +58,18 @@ Satu lapus boleh memakai ketiga metode sekaligus; hasilnya **dijumlahkan**. Item
 
 ## 2. Jangkar tahun dasar (satu mesin untuk TD2010 dan TD2025)
 
-| Jangkar | Bila diisi (`lk.parameter_item`) | Bila kosong (bawaan TD2025) |
-|---|---|---|
-| H̄ (REV) | `H_TD` (TD2010: harga 2010) | Σ₍T₀₎ Output ADHB ÷ Σ₍T₀₎ kuantum |
-| ĪH (EKS, DEF) | `IH_TD` (TD2010: 100) | rata-rata IH pada T₀ |
-| RKA_TD (REV, EKS) | `RKA_TD` — **wajib** | — (kosong = 0, diblokir validasi V02) |
-| RKA_TD (DEF) | dipakai hanya bila tidak ada data T₀ | 1 − Σ₍T₀₎ NTB ADHB ÷ Σ₍T₀₎ Output ADHB |
+Aturan dipilih menurut `ref.tahun_dasar.jangkar_dari_data` (keputusan 3 §11): TD2025 = ya, TD2010 = tidak.
 
-Item tanpa data tahun dasar wajib diberi jangkar (V03). Contohnya spesies ikan 2019–2021, emas 2019–2022, dan aluminium 2026. Tanpa jangkar, ADHK item tersebut menjadi 0 (temuan K3).
+| Jangkar | Bila diisi (`lk.parameter_item`) | Bila kosong, `jangkar_dari_data` = ya (TD2025) | Bila kosong, = tidak (TD2010) |
+|---|---|---|---|
+| H̄ (REV) | `H_TD` (TD2010: harga 2010) | Σ₍T₀₎ Output ADHB ÷ Σ₍T₀₎ kuantum | 0 (V03) |
+| ĪH (EKS, DEF) | `IH_TD` (TD2010: 100) | rata-rata IH pada T₀ | 0 (V03) |
+| RKA_TD (REV, EKS) | `RKA_TD` — **wajib** | kosong = 0, diblokir validasi V02 | sama |
+| RKA_TD (DEF) | TD2025: dipakai hanya bila tidak ada data T₀; TD2010: selalu | 1 − Σ₍T₀₎ NTB ADHB ÷ Σ₍T₀₎ Output ADHB | 0 (V03) |
+| R_TD margin (`R_MARGIN_TD`) | dipakai | Σ₍T₀₎ (R × basis ADHB) ÷ Σ₍T₀₎ basis ADHB (bagian 7) | 0 (V03) |
+
+T₀ = 4 triwulan `tahun_baseline_eks`. Pada TD2010, T₀ hanya titik awal rantai EKS (BASE_ADHB/BASE_ADHK), tidak pernah
+sumber jangkar. Item tanpa data tahun dasar wajib diberi jangkar (V03). Contohnya spesies ikan 2019–2021, emas 2019–2022, dan aluminium 2026. Tanpa jangkar, ADHK item tersebut menjadi 0 (temuan K3).
 
 ## 3. REV — Revaluasi (kuantum × harga)
 
@@ -89,9 +97,12 @@ NTB dihitung sama seperti REV. Jika rantai indeks putus (indeks kosong), semua p
 Seri: `OUT_ADHB`, `NTB_ADHB` (opsional), `IH`, `RKA` (opsional).
 
 1. Output ADHB = OUT_ADHB
-2. NTB ADHB = NTB_ADHB bila diisi. Bila kosong: (1 − RKA(t)) × Output ADHB; jika RKA(t) juga kosong, pakai RKA_TD. Ini pola TD2010, misalnya belanja pegawai O/P/Q dengan RKA_TD = 0.
-3. Output ADHK = Output ADHB ÷ IH(t) × ĪH
+2. NTB ADHB = NTB_ADHB bila diisi. Bila kosong: (1 − RKA(t)) × Output ADHB; jika RKA(t) juga kosong, pakai RKA_TD. Ini pola TD2010, misalnya belanja pegawai O/P/Q dengan RKA_TD = 0. Bila NTB_ADHB, seri RKA, dan RKA_TD semuanya kosong, NTB ADHB = 0 (perilaku LK).
+3. Output ADHK = Output ADHB ÷ IH(t) × ĪH; item margin (bagian 7) membawa output ADHK langsung (arus barang).
 4. NTB ADHK = (1 − RKA_TD) × Output ADHK
+
+**TOP/SOP** (keputusan 1 §11): item pada lapus berjenis `top`/`sop` tidak punya konsumsi antara, sehingga NTB = output
+(ADHB dan ADHK) apa pun isian RKA/NTB_ADHB-nya. Berlaku untuk REV, EKS, dan DEF.
 
 ## 6. Penyesuaian (adjustment) — tiga tahap
 
@@ -106,12 +117,14 @@ Seri: `OUT_ADHB`, `NTB_ADHB` (opsional), `IH`, `RKA` (opsional).
 - NTB BENC = NTB POST + ADJ4_NTB
 - KA = Output − NTB. CT_OUTPUT dan CT_NTB hanya pembanding (V11).
 
-**Tahap SIMULASI** (per lapus daun × triwulan; izin `simulasi.edit`):
+**Tahap SIMULASI** (per lapus berdata × triwulan; izin `simulasi.edit`):
 - NTB ADHK final = NTB ADHK kompilasi + SIM (ADHK); NTB ADHB final = NTB ADHB kompilasi + SIM (ADHB)
-- Output final ikut proporsi NTB: Output.SIM = Output × NTB.SIM ÷ NTB
+- Output final ikut proporsi NTB: Output.SIM = Output × NTB.SIM ÷ NTB. Triwulan tanpa SIM (0): FINAL = BENC apa adanya.
+- Baris agregat FINAL = Σ FINAL lapus berdata (simulasi tidak diinput pada agregat).
 - Bantuan input: "target laju y-on-y" → adj = NTB(t−4) × (1 + g/100) − NTB kompilasi; "target implisit" → adj = target implisit × NTB ADHK ÷ 100 − NTB ADHB
 
-Semua penyesuaian wajib beralasan (min. 10 karakter) dan hanya status `disetujui` yang masuk angka final.
+Semua penyesuaian wajib beralasan (min. 10 karakter) dan hanya status `disetujui` yang masuk angka final
+(`lk.hasil_*`). Pratinjau draf/diajukan dihitung saat diminta dan tidak disimpan (keputusan 8a §11).
 
 ## 7. Rumus turunan dan tautan (`lk.tautan_seri`)
 
@@ -122,21 +135,43 @@ Seri yang tidak diketik operator, tetapi diselesaikan sistem sebelum langkah 1:
 | `TPK_X_KAMAR` | KUANTUM = TPK (persen) × KAMAR | I.1 hotel (sama dengan LK TD2025: 35,99 × 375 = 13.496,25) |
 | `JANGKAR_X_IH_100` | HARGA = H_TD × IH ÷ 100 | TD2010 hortikultura A.1.b, A.1.d |
 | `KAPITA_X_PENDUDUK_X_3` | OUT_ADHB = per kapita × penduduk × 3 ÷ 10⁶ × faktor | TD2010 I.1 sewa, I.2 makan minum (faktor 0,8865) |
-| `MARGIN_X_OUTPUT` | OUT_ADHB = R_MARGIN × Σ Output ADHB lapus barang (+ impor) | TD2010 G.2 arus komoditas |
-| `SERI_REFERENSI` | seri diambil dari `lk.nilai_seri_referensi` (satu seri untuk banyak item) | deflator bersama: indeks upah, implisit PMTB, IHPB, IHP |
-| `HASIL_LAPUS` | seri = Σ hasil lapus lain (OUT_CP/OUT_K/GVA_CP/GVA_K/IMPLISIT_OUT) × faktor | A.1.e jasa pertanian ← A.1.a–A.1.d (usulan T4) |
+| `MARGIN_X_OUTPUT` | basis = Σ Output lapus barang tahap **BENC**; OUT_ADHB = R_MARGIN(t) × basis ADHB(t) × faktor; Output ADHK = R_TD × basis ADHK(t) × faktor | TD2010 G.2 arus komoditas (keputusan 4) |
+| `MARGIN_X_IMPOR` | basis ADHB = V_IMPOR × KURS (KURS = 1 bila item tanpa seri KURS); basis ADHK = basis ADHB ÷ IH × ĪH; OUT_ADHB = R_MARGIN(t) × basis ADHB × faktor; Output ADHK = R_TD × basis ADHK × faktor | TD2010 G.2 margin barang impor (keputusan 4) |
+| `SERI_REFERENSI` | seri = `lk.nilai_seri_referensi` (wilayah yang sama) × faktor; seri belum diisi = kosong | deflator bersama: indeks upah, implisit PMTB, IHPB, IHP, kurs |
+| `HASIL_LAPUS` | seri = Σ hasil lapus lain tahap **BENC** (OUT_CP/OUT_K/GVA_CP/GVA_K; IMPLISIT_OUT = ΣOUT_CP ÷ ΣOUT_K × 100) × faktor | tersedia; A.1.e tetap mengikuti LK resmi (keputusan 6) |
 
-Rumus hanya boleh dipilih dari daftar baku (CHECK di DB). Tidak ada ekspresi bebas.
+Rumus hanya boleh dipilih dari daftar baku (CHECK di DB). Tidak ada ekspresi bebas. Rumus dipasang pada seri sasarannya:
+TPK_X_KAMAR → KUANTUM (REV), JANGKAR_X_IH_100 → HARGA (REV), KAPITA/MARGIN → OUT_ADHB (DEF); selain itu ditolak.
+
+Aturan penyelesaian:
+- Urutan: masa berlaku item → SERI_REFERENSI → HASIL_LAPUS → RUMUS (urutan baku di atas) → masa berlaku lagi. Seri
+  tertaut menggantikan isian manual.
+- Nilai rumus pada triwulan t kosong bila semua komponen seri item pada t kosong; komponen kosong lainnya = 0. Hasil
+  lapus lain selalu terisi. Output ADHK margin hanya ada pada triwulan yang Output ADHB margin-nya ada.
+- R_TD = `R_MARGIN_TD` (parameter item, migrasi 0004) atau, bila kosong dan `jangkar_dari_data`, rata-rata tertimbang
+  R pada T₀; TD2010 tanpa parameter = 0. Item margin tetap DEF: NTB ADHB = NTB_ADHB atau (1 − RKA) × output; NTB ADHK =
+  (1 − RKA_TD) × Output ADHK. Baris IH item margin barang tidak dipakai.
+- Lapus sumber boleh daun, subkategori, kategori, atau kelompok (diurai ke lapus berdata di bawahnya); baris total
+  ditolak. Lapus sumber tanpa data bernilai 0.
+
+**Masa berlaku item** (`periode_mulai_id`/`periode_selesai_id`): nilai di luar masa berlaku dianggap tidak ada sebelum
+hitung, termasuk untuk jangkar dan rantai EKS. Data overlap item lama tidak terhitung ganda; item yang T₀-nya di luar
+masa berlaku wajib berjangkar (V03). Status `nonaktif` tidak menghapus riwayat (tetap dihitung).
 
 ## 8. Kompilasi dan tabel pokok (format tetap seperti Excel)
 
-1. Hitung semua lapus daun. Urutan dependensi dibangun dari `lk.tautan_seri` (HASIL_LAPUS, MARGIN); siklus ditolak.
-2. Agregasi bottom-up mengikuti `ref.lapus.induk_id`: subkategori = Σ daun; kategori = Σ subkategori.
+1. Hitung semua lapus berdata (daun, TOP, SOP). Urutan dependensi dibangun dari `lk.tautan_seri` (HASIL_LAPUS,
+   MARGIN_X_OUTPUT); siklus ditolak dengan pesan berisi kode lapus. Lapus berdata yang tidak punya item REV/EKS/DEF
+   dan tidak punya penyesuaian tidak diberi hasil (baris tabel pokok kosong, bukan 0).
+2. Agregasi bottom-up mengikuti `ref.lapus.induk_id` (baris aktif): subkategori = Σ anak; kategori = Σ subkategori,
+   untuk tahap BENC dan FINAL.
 3. **Kelompok publikasi** (`ref.lapus_kelompok`) = Σ anggota. Kelompok tidak punya item dan tidak menambah total:
    - TD2010: "M,N" = M + N; "R,S,T,U" = R + S + T + U (format publikasi 17 kategori)
    - TD2025: "TUV" = T + U + V (format ekspor LK 02 BPS)
-4. TD2025: NTB = Σ kategori A … V; TOP.SOP = TOP − SOP; PDRB = NTB + TOP.SOP
-5. TD2010: PDRB = Σ kategori A … U; PDRB tanpa migas = PDRB − (B.1 + C.1.b)
+4. Baris total dibaca dari jenis baris master: NTB = Σ akar pohon (kategori/daun tanpa induk); TOP.SOP = Σ TOP − Σ SOP;
+   PDRB = NTB + TOP.SOP. TD2025: NTB = Σ kategori A … V; TD2010 (tanpa baris NTB/TOP/SOP): PDRB = Σ kategori A … U.
+5. PDRB tanpa migas (kedua tahun dasar, keputusan 7) = PDRB − Σ lapus `is_migas` (lapus berbendera yang tidak punya
+   leluhur berbendera, agar tidak terhitung ganda). Seed: TD2010 B.1 + C.1.b; TD2025 B.1 + C.1.2.
 6. Tabel turunan per baris pohon (kategori, subkategori, daun, kelompok, total):
    - distribusi = ADHB ÷ PDRB ADHB × 100
    - q-to-q = X(t) ÷ X(t−1) × 100 − 100; y-on-y terhadap X(t−4); c-to-c = Σ T1..t tahun ini ÷ Σ T1..t tahun lalu × 100 − 100
@@ -168,17 +203,27 @@ Setiap baris hasil menyimpan `versi_mesin` dan `hash_input`, sehingga tidak ada 
 
 ## 11. Keputusan metodologi 5 November 2026 (berlaku mulai F2)
 
-Keputusan berikut sudah dicatat di master/skema (migrasi 0003). Rumusnya diterapkan di mesin produksi dan `engine_ref` pada F2, bersama uji unit dan golden. Sampai saat itu bagian 1–10 di atas tetap menggambarkan `engine_ref` yang berlaku.
+Keputusan berikut dicatat di master/skema (migrasi 0003 dan 0004). Sejak F2, rumusnya sudah diterapkan di mesin
+produksi dan `engine_ref`, beserta uji unit dan golden, dan bagian 1–10 di atas sudah memuatnya.
 
 | No | Keputusan | Sudah di master/skema | Diterapkan di |
 |---|---|---|---|
-| 1 | **TOP/SOP = lapus berisi item**, bukan isian langsung (LK 01 TD2025 juga mencantumkannya di daftar industri). Konsumsi antara = 0, jadi NTB = output. Pajak berbasis nilai (PPN, PBJT, bea masuk): DEF. Cukai dan subsidi per unit (BBM, LPG, listrik, pupuk): REV, volume × tarif atau subsidi per unit tahun dasar. | TOP/SOP boleh punya item dan penugasan | F2 (agregasi), F3 (item) |
+| 1 | **TOP/SOP = lapus berisi item**, bukan isian langsung (LK 01 TD2025 juga mencantumkannya di daftar industri). Konsumsi antara = 0, jadi NTB = output. Pajak berbasis nilai (PPN, PBJT, bea masuk): DEF. Cukai dan subsidi per unit (BBM, LPG, listrik, pupuk): REV, volume × tarif atau subsidi per unit tahun dasar. | TOP/SOP boleh punya item dan penugasan | F2 ✓ (KA = 0, agregasi), F3 (item) |
 | 2 | **V14** tetap memblokir kunci putaran, kecuali admin memberi status `dikecualikan` dengan catatan wajib (agar Put 0 tetap bisa dikunci). | — | F4 |
-| 3 | **Jangkar menurut tahun dasar:** `ref.tahun_dasar.jangkar_dari_data` (TD2025 = ya, TD2010 = tidak). Bila tidak: V03 mewajibkan jangkar untuk semua item, dan tahun baseline hanya titik awal rantai EKS, tidak pernah sumber jangkar. Untuk DEF TD2010, `RKA_TD` diambil dari parameter, bukan rasio tahun baseline (perilaku `engine_ref` lama salah untuk TD2010). Templat TD2010 mengisi IH dasar = 100 untuk seri bersatuan "2010=100". | kolom `jangkar_dari_data` | F2 (`engine_ref` + mesin), F3 (templat, V03) |
-| 4 | **Margin G.2 (TD2010):** output lapus barang diambil dari tahap **BENC**, bukan FINAL (agar G tidak berubah sendiri saat simulasi lapus lain). ADHB memakai rasio margin triwulan berjalan, ADHK memakai rasio margin tahun dasar. Baris impor memakai rumus baru `MARGIN_X_IMPOR` = R × V_IMPOR (× kurs bila US$) × faktor. | — | F2 (kode rumus baru, CHECK) |
+| 3 | **Jangkar menurut tahun dasar:** `ref.tahun_dasar.jangkar_dari_data` (TD2025 = ya, TD2010 = tidak). Bila tidak: V03 mewajibkan jangkar untuk semua item, dan tahun baseline hanya titik awal rantai EKS, tidak pernah sumber jangkar. Untuk DEF TD2010, `RKA_TD` diambil dari parameter, bukan rasio tahun baseline (perilaku `engine_ref` lama salah untuk TD2010). Templat TD2010 mengisi IH dasar = 100 untuk seri bersatuan "2010=100". | kolom `jangkar_dari_data` | F2 ✓ (`engine_ref` + mesin), F3 (templat, V03) |
+| 4 | **Margin G.2 (TD2010):** output lapus barang diambil dari tahap **BENC**, bukan FINAL (agar G tidak berubah sendiri saat simulasi lapus lain). ADHB memakai rasio margin triwulan berjalan, ADHK memakai rasio margin tahun dasar. Baris impor memakai rumus baru `MARGIN_X_IMPOR` = R × V_IMPOR (× kurs bila US$) × faktor. | `MARGIN_X_IMPOR`, `R_MARGIN_TD`, seri `KURS` (migrasi 0004) | F2 ✓ |
 | 5 | **"Ikut item lain"** (mis. IH IMK ikut IBS, harga ternak) menjadi **seri referensi**; jenis seri referensi menerima `harga`; importer mengonversi otomatis. | — | F3 |
 | 6 | **A.1.e** tetap mengikuti LK resmi agar identik dengan LK Put 0. Bila T4 disetujui, perlu kode rumus baru `RASIO_X_HASIL`. | — | — |
-| 7 | **PDRB tanpa migas** di kedua tahun dasar = PDRB − Σ NTB lapus `is_migas`, dibaca dari master (bukan kode tetap). | baris `PDRB.NM` TD2025 | F2 |
-| 8 | **Pratinjau adjustment** draf/diajukan di layar LK Hitung, dihitung di layar saja, tidak disimpan, berlabel "PRATINJAU – belum resmi", tidak muncul di tabel pokok/dashboard/ekspor. Catatan "berpengaruh ke PDRB berjalan saat putaran aktif" masih menunggu penegasan: hanya tampilan (a) atau ikut angka resmi (b). | — | F4 |
+| 7 | **PDRB tanpa migas** di kedua tahun dasar = PDRB − Σ NTB lapus `is_migas`, dibaca dari master (bukan kode tetap). | baris `PDRB.NM` TD2025 | F2 ✓ |
+| 8 | **Pratinjau adjustment** draf/diajukan di layar LK Hitung, dihitung di layar saja, tidak disimpan, berlabel "PRATINJAU – belum resmi", tidak muncul di tabel pokok/dashboard/ekspor. **Ditegaskan (a): hanya tampilan.** Worker hanya menulis penyesuaian `disetujui` ke `lk.hasil_*`; pratinjau memakai draf/diajukan/disetujui tanpa disimpan. | — | F2 ✓ (mesin/worker), F4 (layar) |
 | 9 | **Ambang validasi** dapat diatur per lapus; opsi kalibrasi otomatis ambang = P95 riwayat 2019–2025 (median P95 y-on-y NTB ADHK Put 0 = 11,3%; 12 lapus rutin > 30%). | `ref.validasi.parameter` | F3 |
 | 10 | **Pembanding y-on-y dari rilis TD2010** bila periode pembanding tidak ada di putaran: rilis terbaru yang tanggalnya ≤ tanggal *cut-off* putaran; satu tahun pembanding memakai satu versi rilis (penting untuk c-to-c). Rilis TD2010 tidak pernah menjadi pembanding TD2025. Perlu kolom `tanggal_rilis`, `status_angka`, `tanggal_cutoff`. | — | F4/F5/F6 |
+| 11 | **ADHK margin = arus barang:** Output ADHK margin = rasio margin tahun dasar (`R_MARGIN_TD`) × Σ Output ADHK BENC lapus barang × faktor; baris IH item margin barang tidak dipakai. TD2025 tanpa parameter: rata-rata tertimbang R pada T₀. | `lk.parameter_item.kode` + `R_MARGIN_TD` (0004) | F2 ✓ |
+| 12 | **ADHK margin impor:** R_TD × (V_IMPOR × KURS ÷ IH × ĪH) × faktor (impor harga konstan dideflasi IH). KURS = seri komponen DEF baru, boleh ditautkan ke seri referensi; item tanpa seri KURS = 1. | `ref.jenis_seri` DEF `KURS` (0004) | F2 ✓ |
+| 13 | **Masa berlaku item:** nilai di luar `periode_mulai`–`periode_selesai` dianggap tidak ada sebelum hitung (termasuk jangkar dan rantai EKS). | — | F2 ✓ |
+
+Aturan teknis F2 (konsekuensi rumus, bukan keputusan metodologi baru; tercatat agar dapat ditinjau):
+- Triwulan tanpa SIM: FINAL = BENC, juga bila NTB BENC = 0 (rumus proporsi tidak dipakai, sehingga tidak ada pembagian 0 yang mengosongkan output).
+- Lapus berdata tanpa item REV/EKS/DEF dan tanpa penyesuaian tidak diberi hasil; agregat tanpa satu pun sumber berdata juga tidak.
+- Sumbu hitung = periode putaran diperluas agar mencakup T₀ (rantai EKS dan jangkar); hanya periode putaran yang ditulis.
+- Faktor tautan berlaku untuk semua sumber (SERI_REFERENSI, HASIL_LAPUS, RUMUS); bawaan 1.

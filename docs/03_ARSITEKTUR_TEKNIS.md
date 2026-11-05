@@ -71,10 +71,21 @@ Semua endpoint tulis:
 
 ## 4. Hitung otomatis
 
-1. Simpan data/item/adjustment akan memasukkan job ke `lk.antrean_hitung` (putaran, wilayah, lapus).
-2. Worker menyusun graf dependensi: tautan HASIL_LAPUS/MARGIN, induk, kelompok, NTB/PDRB. Lapus terdampak dihitung ulang bersama turunannya.
-3. Hasil ditulis dalam satu transaksi beserta `hash_input` dan `versi_mesin`. Klien mendapat notifikasi lewat polling ringan atau SSE.
-4. Target: satu lapus < 1 detik; satu wilayah penuh (2019–2026) < 30 detik.
+1. Simpan data/item/adjustment akan memasukkan job ke `lk.antrean_hitung` (putaran, wilayah, lapus) lewat
+   `sinergi_api.worker.antrean.antrekan()`; job menunggu yang sama tidak digandakan (endpoint simpan: F3/F4).
+2. Worker (`python -m sinergi_api.worker`, pengguna `sistem.worker`) mengambil job dengan
+   `SELECT … FOR UPDATE SKIP LOCKED`, mengunci (putaran, wilayah) dengan advisory lock, lalu menghitung ulang
+   **satu wilayah penuh**: muat → graf dependensi (tautan HASIL_LAPUS/MARGIN, induk, kelompok, NTB/PDRB) → mesin →
+   tulis. Hitung penuh dipilih karena cepat dan menjamin semua baris agregat konsisten; job menunggu lain untuk
+   (putaran, wilayah) yang sama ikut ditandai selesai ("digabung ke job N").
+3. Hasil ditulis dalam satu transaksi (hapus lalu COPY `lk.hasil_item`, `lk.hasil_metode`, `lk.hasil_lapus`) beserta
+   `hash_input` (SHA-256 masukan terselesaikan per lapus; agregat = gabungan sidik sumber) dan `versi_mesin`. Hanya
+   periode putaran yang ditulis; hanya penyesuaian `disetujui` yang masuk (keputusan 8a). Putaran terkunci → job
+   `gagal` "Putaran terkunci; hasil tidak diubah." (P0423); siklus tautan → `gagal` dengan kode lapus. Pesan tidak
+   memuat angka. Job `proses` lebih dari 15 menit diambil ulang. `--sekali` menguras antrean lalu keluar.
+4. Pratinjau penyesuaian draf/diajukan: `antrean.pratinjau()` menghitung tanpa menyimpan (layar LK Hitung, F4).
+5. Target: satu lapus < 1 detik; satu wilayah penuh (2019–2026) < 30 detik. Terukur: 73 lapus, 274 item, 32 triwulan
+   ≈ 0,03 detik hitung.
 
 ## 5. Keamanan
 
@@ -92,7 +103,9 @@ Semua endpoint tulis:
 |---|---|
 | Uji skema | `db/test_schema.sql`: RLS, batas item, alasan wajib, kunci 423, audit, tabel pokok lengkap, rumus baku |
 | Uji unit mesin | kasus kecil per metode, jangkar, rumus turunan, adjustment, rekon, kelompok, turunan tabel (contoh di `engine_ref/test_engine.py`) |
-| Golden test | `engine` vs `engine_ref` pada data Put 0 (dari `tools/lk_xlsm_reader.py`); toleransi relatif 1e-9; 72 lapus |
+| Golden sintetis | `tests/golden/test_sintetis.py`: 60 wilayah acak (semua metode, jangkar TD2010/TD2025, tautan, rumus turunan, masa berlaku, penyesuaian, TOP/SOP, kelompok, migas) — mesin vs oracle `engine_ref/kompilasi.py`, relatif ≤ 1e-9, semua tahap dan item. Selalu jalan |
+| Golden data rahasia | `tests/golden/test_golden.py` pada `golden/` (atau `SINERGI_GOLDEN`): LK 01 .xlsm + templat TD2025 TERISI + `manifest.json` (contoh di `tests/golden/periksa.py`). Mesin = `engine_ref` (1e-9) untuk semua lapus; = hasil simpan LK (1e-6) kecuali `tersimpan_usang` (B.3); templat = LK untuk 72 lapus. Alur ini diuji dengan data palsu di `test_golden_alur.py` |
+| Worker | `tests/worker/test_worker.py`: DB → worker → `lk.hasil_*` identik dengan oracle; draf tidak tersimpan; hash berubah hanya bila masukan berubah; terkunci/siklus gagal rapi; job digabung |
 | Round-trip templat | ekspor → impor → hitung = sama; templat kosong dan terisi |
 | API & e2e | alur putaran lengkap; operator lain ditolak; putaran terkunci 423 |
 | Kinerja | 6 wilayah × 140 lapus × 32 triwulan |
@@ -104,6 +117,8 @@ Semua endpoint tulis:
 - Migrasi `0001` menjalankan salinan **beku** skema dan seed v4 (`apps/api/migrations/baseline/*.sql`). Berkas beku tidak boleh diubah.
 - Setiap perubahan skema berikutnya = migrasi baru **dan** sinkronisasi `db/schema.sql` (serta `db/seed_ref.sql` bila seed berubah). Uji sinkron skema menggagalkan CI bila keduanya berbeda.
 - Migrasi `0002`: kolom `sec.pengguna.totp_langkah_terakhir` (kode TOTP tidak boleh dipakai ulang, ASVS 2.8.4).
+- Migrasi `0004` (F2): rumus `MARGIN_X_IMPOR`, parameter `R_MARGIN_TD` (tanpa wajib alasan, seperti `RKA_TD`), seri
+  komponen DEF `KURS`.
 - Peran login: `app_owner` (migrasi, pemilik tabel), `app_rw` (API/worker, RLS berlaku), `app_ro` (laporan). Hanya `app_rw`/`app_ro` yang diberi `CONNECT` selain pemilik. Compose menjalankan migrasi lewat layanan sekali jalan `migrate`, sehingga kredensial pemilik tidak ada di kontainer `api`/`worker`.
 
 ## 8. Autentikasi (F0)
@@ -126,3 +141,18 @@ Alasan perubahan dikirim lewat header `X-Alasan` (UTF-8, *percent-encoded*) dan 
 - **Hapus = nonaktifkan bila dipakai data.** Penghapusan dicoba dalam *savepoint*; bila ditolak *foreign key* (atau dirujuk tautan/riwayat/antrean), baris dinonaktifkan. Tahun dasar dipakai → `arsip`. Pengguna tidak pernah dihapus (nonaktif + semua sesi dicabut). Penugasan diakhiri (`berlaku_sampai` = kemarin). Peran dipakai → nonaktif (tidak memberi izin).
 - **Penjaga hak akses.** Minimal satu pengguna aktif tetap memegang `pengguna.kelola`; admin tidak dapat menonaktifkan akunnya sendiri. Akun sistem (`sistem.worker`) tidak dapat diubah dari UI.
 - **Keamanan DB (migrasi 0003).** RLS tulis `ref.*` hanya dengan izin `master.kelola`; tulis `sec.peran`, `sec.peran_izin`, `sec.pengguna_peran`, `lk.penugasan` hanya dengan `pengguna.kelola`. Semua tabel master diaudit; `sec.pengguna` diaudit tanpa hash sandi/rahasia TOTP dan tanpa pembukuan login. CLI `buat-pengguna` (bootstrap admin pertama) memakai koneksi pemilik; di Docker jalankan lewat layanan `migrate`.
+
+## 10. Mesin hitung (F2)
+
+| Modul `apps/api/engine` | Isi | Oracle |
+|---|---|---|
+| `model.py` | masukan/hasil (urut = `ref.periode.urut`), `VERSI_MESIN`, galat | — |
+| `rev.py`, `eks.py`, `deff.py` | metode per item, jangkar menurut `jangkar_dari_data`, TOP/SOP tanpa KA | `engine_ref/lk_engine.py` |
+| `turunan.py` | masa berlaku, SERI_REFERENSI, HASIL_LAPUS (BENC), rumus baku termasuk margin arus barang | `engine_ref/turunan.py` |
+| `penyesuaian.py`, `rekon.py` | METODE (PR → PRE), REKON (PRE → POST → BENC), SIMULASI (FINAL), bantuan target laju/implisit | `lk_engine.tahap_rekon`, `kompilasi.simulasi` |
+| `graf.py`, `agregasi.py` | pohon, urutan topologis + deteksi siklus, agregasi kategori/kelompok/NTB/TOP.SOP/PDRB/PDRB.NM | `engine_ref/kompilasi.py` |
+| `turunan_tabel.py` | distribusi, laju q/y/c, implisit dan lajunya, SoG (pembagi PDRB ADHK) | `kompilasi.py` (fungsi tabel) |
+| `sidik.py`, `hitung.py` | sidik masukan; orkestrasi satu wilayah | — |
+
+Worker: `apps/api/worker/muat.py` (DB → masukan), `tulis.py` (COPY ke `lk.hasil_*`), `antrean.py` (ambil, proses,
+gabung, pratinjau, `antrekan`).

@@ -35,7 +35,7 @@ Paket ini siap dipakai di Claude Code untuk membangun sistem LK PDRB terintegras
 
 Templat TERISI dan berkas LK (.xlsm) bersifat rahasia dan tidak boleh di-commit.
 
-## Menjalankan (status: F1 Master data)
+## Menjalankan (status: F2 Mesin hitung)
 
 Dengan Docker (server internal):
 
@@ -60,3 +60,16 @@ make dev-web                  # http://localhost:5173 (proksi /api)
 Untuk pengembangan lewat `http://localhost` tanpa TLS, setel `SINERGI_COOKIE_SECURE=false` di `.env`.
 
 Uji: `make test` (oracle `engine_ref`, `db/test_schema.sql` 10 OK pada DB hasil Alembic, pytest unit/API/RLS/sinkron skema, Vitest) dan `make lint`.
+
+## Golden test (mesin internal)
+
+Data LK Put 0 bersifat rahasia dan hanya ada di mesin internal (folder `golden/` di akar repo, tidak di-commit):
+
+```
+golden/manifest.json                        # wilayah, periode, peta lapus -> berkas LK 01 (rekap LK 02), tersimpan_usang, harap_identik
+golden/lk01/*.xlsm                          # LK 01 TD2025 Put 0 per berkas operator
+golden/Templat_Data_Dasar_TD2025_TERISI.xlsx
+```
+
+Contoh isi `manifest.json` ada di `apps/api/tests/golden/periksa.py` (`MANIFEST_CONTOH`). Jalankan `make golden`
+(atau `SINERGI_GOLDEN=/jalur/golden make golden`). Laporan hanya memuat kode lapus dan selisih relatif.

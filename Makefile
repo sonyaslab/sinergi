@@ -54,7 +54,7 @@ test-api:      ## pytest apps/api (unit, api, rls, sinkron skema) pada DB sinerg
 test-web:
 	cd $(WEB) && npx vitest run
 
-golden:        ## golden test vs engine_ref (butuh folder golden/ di mesin internal; F2)
+golden:        ## golden test: sintetis (selalu) + data LK Put 0 di golden/ atau SINERGI_GOLDEN (mesin internal)
 	cd $(API) && $(PY) -m pytest -m golden tests/golden
 
 lint:

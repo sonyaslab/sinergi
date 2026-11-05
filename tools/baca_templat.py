@@ -23,10 +23,10 @@ import openpyxl
 
 RX_P = re.compile(r"^(\d{4})-T([1-4])$")
 WAJIB = {"REV": {"KUANTUM", "HARGA", "RKA"}, "EKS": {"INDEKS", "IH", "RKA"}, "DEF": {"OUT_ADHB", "IH"}, "PDK": {"NILAI"}}
-KOMPONEN = {"TPK", "KAMAR", "NILAI_KAPITA", "PENDUDUK", "VOLUME", "V_IMPOR", "R_MARGIN"}
+KOMPONEN = {"TPK", "KAMAR", "NILAI_KAPITA", "PENDUDUK", "VOLUME", "V_IMPOR", "R_MARGIN", "KURS"}
 BOLEH = {"REV": {"KUANTUM", "HARGA", "IH", "RKA", "TPK", "KAMAR"},
          "EKS": {"INDEKS", "IH", "BASE_ADHB", "BASE_ADHK", "RKA"},
-         "DEF": {"OUT_ADHB", "NTB_ADHB", "IH", "RKA", "NILAI_KAPITA", "PENDUDUK", "VOLUME", "V_IMPOR", "R_MARGIN"},
+         "DEF": {"OUT_ADHB", "NTB_ADHB", "IH", "RKA", "NILAI_KAPITA", "PENDUDUK", "VOLUME", "V_IMPOR", "R_MARGIN", "KURS"},
          "PDK": {"NILAI"}}
 
 

@@ -330,13 +330,13 @@ CREATE INDEX ON lk.nilai_item (item_id, jenis_seri);
 CREATE TABLE lk.parameter_item (
   putaran_id bigint NOT NULL REFERENCES lk.putaran(id) ON DELETE CASCADE,
   item_id    bigint NOT NULL REFERENCES lk.item(id),
-  kode       text   NOT NULL CHECK (kode IN ('RKA_TD','H_TD','IH_TD')),
+  kode       text   NOT NULL CHECK (kode IN ('RKA_TD','H_TD','IH_TD','R_MARGIN_TD')),  -- R_MARGIN_TD: migrasi 0004
   nilai      numeric NOT NULL,
   alasan     text,
   diubah_oleh bigint REFERENCES sec.pengguna(id),
   diubah_pada timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (putaran_id, item_id, kode),
-  CHECK (kode = 'RKA_TD' OR alasan IS NOT NULL)          -- jangkar pengganti wajib beralasan
+  CHECK (kode IN ('RKA_TD','R_MARGIN_TD') OR alasan IS NOT NULL)  -- jangkar pengganti wajib beralasan; rasio tahun dasar tidak
 );
 
 -- LK Biaya Antara tahun dasar (hasil SE2026/SUT). Rasio dihitung otomatis lalu diterapkan ke RKA_TD item.
@@ -390,7 +390,8 @@ CREATE TABLE lk.tautan_seri (
   item_id          bigint  NOT NULL REFERENCES lk.item(id) ON DELETE CASCADE,
   jenis_seri       text    NOT NULL,
   sumber           text    NOT NULL CHECK (sumber IN ('SERI_REFERENSI','HASIL_LAPUS','RUMUS')),
-  rumus            text CHECK (rumus IS NULL OR rumus IN ('TPK_X_KAMAR','JANGKAR_X_IH_100','KAPITA_X_PENDUDUK_X_3','MARGIN_X_OUTPUT')),
+  rumus            text CHECK (rumus IS NULL OR rumus IN ('TPK_X_KAMAR','JANGKAR_X_IH_100','KAPITA_X_PENDUDUK_X_3',
+                                                         'MARGIN_X_OUTPUT','MARGIN_X_IMPOR')),  -- MARGIN_X_IMPOR: migrasi 0004
   seri_id          integer REFERENCES lk.seri_referensi(id),
   lapus_sumber_ids integer[],
   besaran          text CHECK (besaran IN ('OUT_CP','OUT_K','GVA_CP','GVA_K','IMPLISIT_OUT')),

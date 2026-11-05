@@ -34,6 +34,7 @@ INSERT INTO ref.jenis_seri (metode_kode, kode, nama, wajib, komponen, hanya_td, 
   ('DEF','VOLUME','Volume (pendukung)',false,true,false,7),
   ('DEF','V_IMPOR','Nilai impor',false,true,false,8),
   ('DEF','R_MARGIN','Rasio margin perdagangan',false,true,false,9),
+  ('DEF','KURS','Kurs (Rp per US$) untuk nilai impor',false,true,false,10),
   ('PDK','NILAI','Nilai indikator',true,false,false,1);
 INSERT INTO ref.jenis_penyesuaian (kode, tahap, nama, ubah_angka, wajib_alasan) VALUES
   ('ADJ1','METODE','Penyesuaian cakupan (coverage)',true,true),
