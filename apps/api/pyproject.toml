@@ -71,6 +71,9 @@ extend-exclude = ["migrations/baseline"]
 select = ["E", "F", "I", "B", "UP", "S"]
 ignore = ["S101", "S608", "B008"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["sinergi_api", "tests"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S603", "S607"]
 

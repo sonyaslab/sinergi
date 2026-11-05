@@ -150,6 +150,7 @@ def test_wajib_ganti_sandi_awal(klien, buat_akun, jam):
 
 def test_cookie_aman_di_produksi(monkeypatch):
     from fastapi import Response
+
     from sinergi_api.app import config, keamanan_http
 
     monkeypatch.setattr(config.pengaturan(), "cookie_secure", True)

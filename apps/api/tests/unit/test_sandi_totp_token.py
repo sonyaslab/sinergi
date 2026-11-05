@@ -7,6 +7,7 @@ import jwt
 import pyotp
 import pytest
 from cryptography.fernet import Fernet
+
 from sinergi_api.auth import sandi as sd
 from sinergi_api.auth import token as tok
 from sinergi_api.auth import totp

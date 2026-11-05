@@ -3,6 +3,9 @@
     python -m sinergi_api.cli buat-pengguna --username admin --nama "Admin SINERGI" --peran admin
 
 Sandi sementara acak dicetak SEKALI ke layar; pengguna wajib menggantinya saat login pertama dan mendaftarkan TOTP.
+Perintah ini untuk bootstrap (admin pertama) sehingga memakai koneksi pemilik (SINERGI_DB_URL_OWNER): RLS menolak
+penulisan peran oleh app_rw tanpa izin pengguna.kelola. Di Docker jalankan lewat layanan `migrate`.
+Pengguna berikutnya dibuat admin dari layar Pengguna & Hak Akses.
 """
 from __future__ import annotations
 
@@ -10,15 +13,17 @@ import argparse
 import secrets
 import sys
 
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 
 from .app import audit, db
+from .app.config import Pengaturan
 from .auth import sandi
 
 
 def buat_pengguna(username: str, nama: str, peran: list[str], email: str | None = None) -> tuple[int, str]:
     sementara = secrets.token_urlsafe(12)
-    with db.transaksi(None, alasan="buat pengguna via CLI") as conn:
+    eng = create_engine(Pengaturan().db_url_owner)
+    with db.transaksi(None, alasan="buat pengguna via CLI", engine=eng) as conn:
         uid = conn.execute(
             text("INSERT INTO sec.pengguna (username, nama, email, password_hash, wajib_ganti_sandi)"
                  " VALUES (lower(:u), :n, :e, :h, true) RETURNING id"),
@@ -32,6 +37,7 @@ def buat_pengguna(username: str, nama: str, peran: list[str], email: str | None 
                 raise SystemExit(f"Peran '{kode}' tidak ada di sec.peran.")
         audit.catat(conn, "BUAT_PENGGUNA", "sec.pengguna", str(uid), None, None,
                     {"username": username, "peran": peran}, "CLI")
+    eng.dispose()
     return uid, sementara
 
 

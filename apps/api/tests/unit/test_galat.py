@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import types
 
-from sinergi_api.app.galat import petakan_db
 from sqlalchemy.exc import DBAPIError
+
+from sinergi_api.app.galat import petakan_db
 
 
 def _galat(sqlstate: str, pesan: str = "", constraint: str | None = None) -> DBAPIError:

@@ -55,7 +55,7 @@ def izin_dan_peran(conn: Connection, user_id: int) -> tuple[tuple[str, ...], fro
         text(
             "SELECT coalesce(array_agg(DISTINCT p.kode) FILTER (WHERE p.kode IS NOT NULL), '{}') AS peran,"
             "       coalesce(array_agg(DISTINCT pi.izin_kode) FILTER (WHERE pi.izin_kode IS NOT NULL), '{}') AS izin"
-            "  FROM sec.pengguna_peran pp JOIN sec.peran p ON p.id = pp.peran_id"
+            "  FROM sec.pengguna_peran pp JOIN sec.peran p ON p.id = pp.peran_id AND p.aktif"
             "  LEFT JOIN sec.peran_izin pi ON pi.peran_id = pp.peran_id"
             " WHERE pp.pengguna_id = :u"
         ),

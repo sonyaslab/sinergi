@@ -127,6 +127,7 @@ def jam(monkeypatch):
 @pytest.fixture
 def klien(basis_data):
     from fastapi.testclient import TestClient
+
     from sinergi_api.app.main import buat_app
 
     with TestClient(buat_app(), base_url="http://testserver") as c:
@@ -148,3 +149,37 @@ def masuk(c, akun: Akun, jam) -> dict[str, str]:
     r = c.post("/api/auth/totp", json={"kode": jam.kode(akun.rahasia)}, headers=h)
     assert r.status_code == 200, r.text
     return h
+
+
+@pytest.fixture
+def sebagai(klien, buat_akun, jam):
+    """Login sebagai peran tertentu: h = sebagai('admin') -> header CSRF; klien sudah memegang cookie sesi."""
+
+    def _masuk(*peran: str) -> dict[str, str]:
+        klien.cookies.clear()
+        akun = buat_akun(list(peran))
+        h = masuk(klien, akun, jam)
+        h["_uid"] = str(akun.id)
+        return h
+
+    return _masuk
+
+
+def tanpa_uid(h: dict[str, str]) -> dict[str, str]:
+    return {k: v for k, v in h.items() if not k.startswith("_")}
+
+
+@pytest.fixture
+def td_uji(klien, admin_conn):
+    """Pabrik tahun dasar uji berisi salinan pohon TD2025 (memerlukan klien yang login sebagai admin)."""
+
+    def _buat(h: dict[str, str]) -> dict:
+        kode = f"TD{secrets.randbelow(9000) + 1000}"
+        sumber = admin_conn.execute("SELECT id FROM ref.tahun_dasar WHERE kode = 'TD2025'").fetchone()[0]
+        r = klien.post("/api/tahun-dasar", headers=tanpa_uid(h), json={
+            "kode": kode, "tahun_dasar": 2025, "status": "rencana", "klasifikasi": "KBLI2025",
+            "tahun_awal_seri": 2019, "tahun_baseline_eks": 2025, "salin_pohon_dari": sumber})
+        assert r.status_code == 201, r.text
+        return r.json()
+
+    return _buat

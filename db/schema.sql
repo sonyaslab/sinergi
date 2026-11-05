@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SINERGI (Sistem Neraca Ekonomi Regional Terintegrasi) — skema basis data (PostgreSQL 16)
--- Versi 4 (+ migrasi Alembic s.d. 0002) — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
+-- Versi 4 (+ migrasi Alembic s.d. 0003) — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
 -- kategori M,N dan R,S,T,U(,V) terpisah + kelompok publikasi; komoditas dinamis per triwulan;
 -- seri 2010–2045, item dinamis per wilayah/lapus/metode, rasio KA per item,
 -- adjustment 3 tingkat (METODE, REKON, SIMULASI), multi-operator, audit.
@@ -58,7 +58,8 @@ COMMENT ON COLUMN sec.pengguna.totp_langkah_terakhir IS 'Langkah waktu (unix/30)
 CREATE TABLE sec.peran (
   id    smallserial PRIMARY KEY,
   kode  text NOT NULL UNIQUE,          -- admin, operator, supervisor, pimpinan, auditor
-  nama  text NOT NULL
+  nama  text NOT NULL,
+  aktif boolean NOT NULL DEFAULT true  -- migrasi 0003: peran nonaktif tidak memberi izin
 );
 
 CREATE TABLE sec.izin (
@@ -95,6 +96,7 @@ CREATE OR REPLACE FUNCTION sec.punya_izin(p_izin text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = sec, pg_temp AS $$
   SELECT EXISTS (
     SELECT 1 FROM sec.pengguna_peran pp
+    JOIN sec.peran pr ON pr.id = pp.peran_id AND pr.aktif
     JOIN sec.peran_izin pi ON pi.peran_id = pp.peran_id
     JOIN sec.pengguna u ON u.id = pp.pengguna_id AND u.aktif
     WHERE pp.pengguna_id = sec.uid() AND pi.izin_kode = p_izin)
@@ -111,8 +113,10 @@ CREATE TABLE ref.tahun_dasar (
   tahun_awal_seri smallint NOT NULL,
   klasifikasi     text NOT NULL CHECK (klasifikasi IN ('KBLI2020','KBLI2025')),
   tahun_baseline_eks smallint NOT NULL,           -- TD2025: 2025; TD2010: tahun rilis terakhir (mis. 2024)
-  keterangan      text
+  keterangan      text,
+  jangkar_dari_data boolean NOT NULL DEFAULT true -- migrasi 0003: TD2025 true; TD2010 false (jangkar wajib diisi)
 );
+COMMENT ON COLUMN ref.tahun_dasar.jangkar_dari_data IS 'true: jangkar (H_TD/IH_TD/RKA_TD DEF) boleh dihitung dari data tahun baseline bila kosong (TD2025); false: jangkar wajib diisi (TD2010, V03)';
 
 CREATE TABLE ref.periode (
   id        serial PRIMARY KEY,
@@ -129,7 +133,8 @@ CREATE TABLE ref.wilayah (
   nama   text NOT NULL,
   level  text NOT NULL CHECK (level IN ('provinsi','kabupaten','kota')),
   induk  char(4) REFERENCES ref.wilayah(kode),
-  urutan smallint NOT NULL DEFAULT 0
+  urutan smallint NOT NULL DEFAULT 0,
+  aktif  boolean NOT NULL DEFAULT true
 );
 
 CREATE TABLE ref.lapus (
@@ -193,14 +198,16 @@ CREATE TABLE ref.jenis_penyesuaian (
 
 CREATE TABLE ref.satuan (
   kode  text PRIMARY KEY,
-  nama  text NOT NULL
+  nama  text NOT NULL,
+  aktif boolean NOT NULL DEFAULT true
 );
 
 CREATE TABLE ref.sumber_data (
   id        serial PRIMARY KEY,
   nama      text NOT NULL UNIQUE,
   instansi  text,
-  keterangan text
+  keterangan text,
+  aktif     boolean NOT NULL DEFAULT true
 );
 
 CREATE TABLE ref.katalog_komoditas (
@@ -660,6 +667,58 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ---------------------------------------------------------------------
+-- Migrasi 0003 (F1 master): RLS tulis master & hak akses, audit semua tabel master.
+-- Tulis ref.* hanya dengan izin master.kelola; tulis peran/izin/penugasan hanya dengan izin pengguna.kelola.
+-- ---------------------------------------------------------------------
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['ref.tahun_dasar','ref.wilayah','ref.lapus','ref.lapus_kelompok','ref.konkordansi_lapus',
+                           'ref.katalog_komoditas','ref.satuan','ref.sumber_data','ref.validasi'] LOOP
+    EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('CREATE POLICY baca ON %s FOR SELECT USING (true)', t);
+    EXECUTE format('CREATE POLICY kelola ON %s FOR ALL USING (sec.punya_izin(''master.kelola''))'
+                   ' WITH CHECK (sec.punya_izin(''master.kelola''))', t);
+  END LOOP;
+  FOREACH t IN ARRAY ARRAY['sec.peran','sec.peran_izin','sec.pengguna_peran','lk.penugasan'] LOOP
+    EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('CREATE POLICY baca ON %s FOR SELECT USING (true)', t);
+    EXECUTE format('CREATE POLICY kelola ON %s FOR ALL USING (sec.punya_izin(''pengguna.kelola''))'
+                   ' WITH CHECK (sec.punya_izin(''pengguna.kelola''))', t);
+  END LOOP;
+  FOREACH t IN ARRAY ARRAY['ref.tahun_dasar','ref.wilayah','ref.lapus_kelompok','ref.katalog_komoditas','ref.satuan',
+                           'ref.sumber_data','ref.validasi','sec.peran'] LOOP
+    EXECUTE format('CREATE TRIGGER trg_audit AFTER INSERT OR UPDATE OR DELETE ON %s
+                    FOR EACH ROW EXECUTE FUNCTION audit.catat()', t);
+  END LOOP;
+END $$;
+
+-- sec.pengguna diaudit tanpa hash sandi / rahasia TOTP dan tanpa pembukuan login (dicatat aplikasi).
+CREATE OR REPLACE FUNCTION audit.catat_pengguna() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = audit, pg_temp AS $$
+DECLARE
+  j_old jsonb; j_new jsonb;
+  rahasia text[] := ARRAY['password_hash','totp_secret_enc'];
+  pembukuan text[] := ARRAY['gagal_login','terkunci_sampai','terakhir_login','totp_langkah_terakhir','diubah_pada'];
+BEGIN
+  j_old := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN to_jsonb(OLD) - rahasia END;
+  j_new := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN to_jsonb(NEW) - rahasia END;
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.password_hash IS DISTINCT FROM NEW.password_hash THEN j_new := j_new || '{"sandi_diubah": true}'; END IF;
+    IF OLD.totp_secret_enc IS DISTINCT FROM NEW.totp_secret_enc THEN
+      j_new := j_new || '{"rahasia_totp_diubah": true}';
+    END IF;
+    IF (j_old - pembukuan) = (j_new - pembukuan) THEN RETURN NULL; END IF;
+  END IF;
+  INSERT INTO audit.log (pengguna_id, ip, aksi, entitas, entitas_id, nilai_lama, nilai_baru, alasan, hash)
+  VALUES (sec.uid(), NULLIF(current_setting('app.ip', true),'')::inet, TG_OP, 'sec.pengguna',
+          coalesce(j_new, j_old)->>'id', j_old, j_new, NULLIF(current_setting('app.alasan', true),''), 'x');
+  RETURN NULL;
+END $$;
+CREATE TRIGGER trg_audit AFTER INSERT OR UPDATE OR DELETE ON sec.pengguna
+  FOR EACH ROW EXECUTE FUNCTION audit.catat_pengguna();
+
 CREATE TABLE audit.impor_berkas (
   id          bigserial PRIMARY KEY,
   nama_berkas text NOT NULL,
@@ -734,6 +793,9 @@ REVOKE UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA audit FROM app_rw;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA lk, sec, audit TO app_rw;
 -- Master (ref) diubah hanya lewat endpoint admin yang memakai koneksi app_rw + izin master.kelola:
 GRANT INSERT, UPDATE ON ref.lapus, ref.lapus_kelompok, ref.konkordansi_lapus, ref.katalog_komoditas, ref.sumber_data,
-      ref.satuan, ref.validasi TO app_rw;
+      ref.satuan, ref.validasi, ref.tahun_dasar, ref.wilayah TO app_rw;
+-- Migrasi 0003: hapus master (API menonaktifkan bila sudah dipakai data). Dibatasi izin master.kelola lewat RLS.
+GRANT DELETE ON ref.tahun_dasar, ref.wilayah, ref.lapus, ref.lapus_kelompok, ref.konkordansi_lapus,
+      ref.katalog_komoditas, ref.satuan, ref.sumber_data TO app_rw;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA ref TO app_rw;
 -- app_rw TIDAK memiliki hak DDL dan bukan pemilik tabel, sehingga RLS berlaku.

@@ -1,8 +1,8 @@
 -- Seed master SINERGI (Sistem Neraca Ekonomi Regional Terintegrasi) (TD2010/KBLI 2020 + TD2025/KBLI 2025). Dibangkitkan dari scripts/lapus_master.py. Jalankan setelah schema.sql.
 BEGIN;
-INSERT INTO ref.tahun_dasar (kode, tahun_dasar, status, tahun_awal_seri, klasifikasi, tahun_baseline_eks, keterangan) VALUES
-  ('TD2010', 2010, 'produksi', 2010, 'KBLI2020', 2024, 'Produksi berjalan sampai cut-over; lalu arsip (read-only). Kategori A-U, M/N dan R/S/T/U terpisah.'),
-  ('TD2025', 2025, 'paralel', 2019, 'KBLI2025', 2025, 'Rebasing; seri 2019Q1 ke depan; Put 0 = backcast. Kategori A-V, T/U/V terpisah (TUV = kelompok ekspor LK 02).');
+INSERT INTO ref.tahun_dasar (kode, tahun_dasar, status, tahun_awal_seri, klasifikasi, tahun_baseline_eks, keterangan, jangkar_dari_data) VALUES
+  ('TD2010', 2010, 'produksi', 2010, 'KBLI2020', 2024, 'Produksi berjalan sampai cut-over; lalu arsip (read-only). Kategori A-U, M/N dan R/S/T/U terpisah.', false),
+  ('TD2025', 2025, 'paralel', 2019, 'KBLI2025', 2025, 'Rebasing; seri 2019Q1 ke depan; Put 0 = backcast. Kategori A-V, T/U/V terpisah (TUV = kelompok ekspor LK 02).', true);
 INSERT INTO ref.periode (tahun, triwulan) SELECT y, q FROM generate_series(2010, 2045) y, generate_series(1, 4) q;
 INSERT INTO ref.wilayah (kode, nama, level, induk, urutan) VALUES
   ('6500','Provinsi Kalimantan Utara','provinsi',NULL,0), ('6501','Kabupaten Malinau','kabupaten','6500',1),
@@ -297,7 +297,8 @@ INSERT INTO ref.lapus (tahun_dasar_id, kode, nama, level, urutan, jenis, is_miga
   ((SELECT id FROM ref.tahun_dasar WHERE kode='TD2025'),'TOP','Pajak atas Produk',0,98,'top',false,NULL),
   ((SELECT id FROM ref.tahun_dasar WHERE kode='TD2025'),'SOP','Subsidi atas Produk',0,99,'sop',false,NULL),
   ((SELECT id FROM ref.tahun_dasar WHERE kode='TD2025'),'TOP.SOP','Pajak dikurangi Subsidi atas Produk',0,100,'topsop',false,NULL),
-  ((SELECT id FROM ref.tahun_dasar WHERE kode='TD2025'),'PDRB','Produk Domestik Regional Bruto',0,101,'pdrb',false,NULL);
+  ((SELECT id FROM ref.tahun_dasar WHERE kode='TD2025'),'PDRB','Produk Domestik Regional Bruto',0,101,'pdrb',false,NULL),
+  ((SELECT id FROM ref.tahun_dasar WHERE kode='TD2025'),'PDRB.NM','PDRB Tanpa Migas',0,102,'pdrb_nonmigas',false,NULL);
 UPDATE ref.lapus c SET induk_id = p.id FROM ref.lapus p, ref.tahun_dasar td
 WHERE td.kode='TD2025' AND c.tahun_dasar_id=td.id AND p.tahun_dasar_id=td.id AND p.kode = (CASE
   WHEN c.kode='A.1' THEN 'A'
@@ -464,7 +465,7 @@ SELECT a.id, b.id, x.bobot, x.ket FROM (VALUES
 JOIN ref.lapus a ON a.kode = x.asal AND a.tahun_dasar_id = (SELECT id FROM ref.tahun_dasar WHERE kode='TD2010')
 JOIN ref.lapus b ON b.kode = x.tujuan AND b.tahun_dasar_id = (SELECT id FROM ref.tahun_dasar WHERE kode='TD2025');
 INSERT INTO sec.peran (kode, nama) VALUES ('admin','Administrator'), ('operator','Operator'), ('supervisor','Supervisor (pimpinan)'), ('auditor','Auditor (baca saja)');
-INSERT INTO sec.izin (kode, nama) VALUES ('master.kelola','master.kelola'), ('pengguna.kelola','pengguna.kelola'), ('putaran.kelola','putaran.kelola'), ('putaran.kunci','putaran.kunci'), ('putaran.buka_kunci','putaran.buka_kunci'), ('data_dasar.isi','data_dasar.isi'), ('data_dasar.impor','data_dasar.impor'), ('item.tambah','item.tambah'), ('metode.pilih','metode.pilih'), ('biaya_antara.isi','biaya_antara.isi'), ('penyesuaian.usul','penyesuaian.usul'), ('penyesuaian.putus','penyesuaian.putus'), ('lk.ajukan','lk.ajukan'), ('lk.setujui','lk.setujui'), ('simulasi.edit','simulasi.edit'), ('tabel_pokok.lihat','tabel_pokok.lihat'), ('dashboard.lihat','dashboard.lihat'), ('ekspor.tabel_pokok','ekspor.tabel_pokok'), ('audit.lihat','audit.lihat'), ('data.tulis_semua','data.tulis_semua'), ('rilis.impor','rilis.impor');
+INSERT INTO sec.izin (kode, nama) VALUES ('master.kelola', 'Kelola master data (tahun dasar, lapus, katalog, wilayah)'), ('pengguna.kelola', 'Kelola pengguna, peran, dan penugasan'), ('putaran.kelola', 'Buka dan atur putaran'), ('putaran.kunci', 'Kunci putaran'), ('putaran.buka_kunci', 'Buka kunci putaran'), ('data_dasar.isi', 'Isi data dasar'), ('data_dasar.impor', 'Impor templat data dasar'), ('item.tambah', 'Tambah komoditas/rincian'), ('metode.pilih', 'Pilih metode'), ('biaya_antara.isi', 'Isi biaya antara'), ('penyesuaian.usul', 'Usulkan adjustment'), ('penyesuaian.putus', 'Putuskan adjustment'), ('lk.ajukan', 'Ajukan LK'), ('lk.setujui', 'Setujui atau kembalikan LK'), ('simulasi.edit', 'Ubah simulasi akhir'), ('tabel_pokok.lihat', 'Lihat tabel pokok'), ('dashboard.lihat', 'Lihat dashboard'), ('ekspor.tabel_pokok', 'Ekspor tabel pokok'), ('audit.lihat', 'Lihat jejak audit'), ('data.tulis_semua', 'Tulis data semua lapus dan wilayah'), ('rilis.impor', 'Impor angka rilis');
 INSERT INTO sec.peran_izin (peran_id, izin_kode) SELECT p.id, x.iz FROM (VALUES
   ('admin','master.kelola'),
   ('admin','pengguna.kelola'),

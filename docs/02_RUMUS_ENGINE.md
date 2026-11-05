@@ -163,3 +163,22 @@ Bawaan FBY (harga konstan tahun dasar, aditif). Modul CVM *one-quarter overlap* 
 | Pembanding rilis | `lk.tabel_pokok_rilis` | — |
 
 Setiap baris hasil menyimpan `versi_mesin` dan `hash_input`, sehingga tidak ada langkah "simpan rekonsiliasi" terpisah (temuan T3).
+
+---
+
+## 11. Keputusan metodologi 5 November 2026 (berlaku mulai F2)
+
+Keputusan berikut sudah dicatat di master/skema (migrasi 0003). Rumusnya diterapkan di mesin produksi dan `engine_ref` pada F2, bersama uji unit dan golden. Sampai saat itu bagian 1–10 di atas tetap menggambarkan `engine_ref` yang berlaku.
+
+| No | Keputusan | Sudah di master/skema | Diterapkan di |
+|---|---|---|---|
+| 1 | **TOP/SOP = lapus berisi item**, bukan isian langsung (LK 01 TD2025 juga mencantumkannya di daftar industri). Konsumsi antara = 0, jadi NTB = output. Pajak berbasis nilai (PPN, PBJT, bea masuk): DEF. Cukai dan subsidi per unit (BBM, LPG, listrik, pupuk): REV, volume × tarif atau subsidi per unit tahun dasar. | TOP/SOP boleh punya item dan penugasan | F2 (agregasi), F3 (item) |
+| 2 | **V14** tetap memblokir kunci putaran, kecuali admin memberi status `dikecualikan` dengan catatan wajib (agar Put 0 tetap bisa dikunci). | — | F4 |
+| 3 | **Jangkar menurut tahun dasar:** `ref.tahun_dasar.jangkar_dari_data` (TD2025 = ya, TD2010 = tidak). Bila tidak: V03 mewajibkan jangkar untuk semua item, dan tahun baseline hanya titik awal rantai EKS, tidak pernah sumber jangkar. Untuk DEF TD2010, `RKA_TD` diambil dari parameter, bukan rasio tahun baseline (perilaku `engine_ref` lama salah untuk TD2010). Templat TD2010 mengisi IH dasar = 100 untuk seri bersatuan "2010=100". | kolom `jangkar_dari_data` | F2 (`engine_ref` + mesin), F3 (templat, V03) |
+| 4 | **Margin G.2 (TD2010):** output lapus barang diambil dari tahap **BENC**, bukan FINAL (agar G tidak berubah sendiri saat simulasi lapus lain). ADHB memakai rasio margin triwulan berjalan, ADHK memakai rasio margin tahun dasar. Baris impor memakai rumus baru `MARGIN_X_IMPOR` = R × V_IMPOR (× kurs bila US$) × faktor. | — | F2 (kode rumus baru, CHECK) |
+| 5 | **"Ikut item lain"** (mis. IH IMK ikut IBS, harga ternak) menjadi **seri referensi**; jenis seri referensi menerima `harga`; importer mengonversi otomatis. | — | F3 |
+| 6 | **A.1.e** tetap mengikuti LK resmi agar identik dengan LK Put 0. Bila T4 disetujui, perlu kode rumus baru `RASIO_X_HASIL`. | — | — |
+| 7 | **PDRB tanpa migas** di kedua tahun dasar = PDRB − Σ NTB lapus `is_migas`, dibaca dari master (bukan kode tetap). | baris `PDRB.NM` TD2025 | F2 |
+| 8 | **Pratinjau adjustment** draf/diajukan di layar LK Hitung, dihitung di layar saja, tidak disimpan, berlabel "PRATINJAU – belum resmi", tidak muncul di tabel pokok/dashboard/ekspor. Catatan "berpengaruh ke PDRB berjalan saat putaran aktif" masih menunggu penegasan: hanya tampilan (a) atau ikut angka resmi (b). | — | F4 |
+| 9 | **Ambang validasi** dapat diatur per lapus; opsi kalibrasi otomatis ambang = P95 riwayat 2019–2025 (median P95 y-on-y NTB ADHK Put 0 = 11,3%; 12 lapus rutin > 30%). | `ref.validasi.parameter` | F3 |
+| 10 | **Pembanding y-on-y dari rilis TD2010** bila periode pembanding tidak ada di putaran: rilis terbaru yang tanggalnya ≤ tanggal *cut-off* putaran; satu tahun pembanding memakai satu versi rilis (penting untuk c-to-c). Rilis TD2010 tidak pernah menjadi pembanding TD2025. Perlu kolom `tanggal_rilis`, `status_angka`, `tanggal_cutoff`. | — | F4/F5/F6 |

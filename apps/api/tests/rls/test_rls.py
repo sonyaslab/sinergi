@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import pytest
-from sinergi_api.app import db
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, ProgrammingError
+
+from sinergi_api.app import db
 
 pytestmark = pytest.mark.db
 

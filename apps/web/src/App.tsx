@@ -7,7 +7,17 @@ import { menuUntuk } from "./menu";
 import { Beranda } from "./pages/Beranda";
 import { GantiSandi } from "./pages/GantiSandi";
 import { Login } from "./pages/Login";
+import { JejakAudit } from "./pages/JejakAudit";
+import { MasterData } from "./pages/MasterData";
+import { PenggunaAkses } from "./pages/PenggunaAkses";
 import { Segera } from "./pages/Segera";
+
+// Layar yang sudah dibangun; menu lain menampilkan "dibangun pada fase Fx".
+const HALAMAN: Record<string, () => JSX.Element> = {
+  "/master": () => <MasterData />,
+  "/pengguna": () => <PenggunaAkses />,
+  "/audit": () => <JejakAudit />,
+};
 
 async function ambilProfil(): Promise<Profil | null> {
   try {
@@ -38,7 +48,7 @@ export function App() {
           {menuUntuk(profil.izin)
             .filter((m) => m.jalur !== "/")
             .map((m) => (
-              <Route key={m.jalur} path={m.jalur} element={<Segera />} />
+              <Route key={m.jalur} path={m.jalur} element={HALAMAN[m.jalur]?.() ?? <Segera />} />
             ))}
           <Route path="akun/sandi" element={<GantiSandi />} />
           <Route path="*" element={<p className="text-slate-500">Halaman tidak ditemukan atau Anda tidak memiliki akses.</p>} />

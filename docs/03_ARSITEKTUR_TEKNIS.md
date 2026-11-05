@@ -53,7 +53,8 @@ Penamaan teknis:
 | Kelompok | Endpoint utama |
 |---|---|
 | Auth | `POST /auth/login`, `POST /auth/totp`, `POST /auth/refresh`, `POST /auth/logout` |
-| Master | `GET/POST/PATCH /tahun-dasar`, `/lapus` (pohon), `/lapus/{id}/kelompok`, `/konkordansi`, `/katalog`, `/wilayah`, `/pengguna`, `/penugasan` |
+| Master (F1) | `GET/POST/PATCH/DELETE /tahun-dasar` (opsi `salin_pohon_dari`); `GET/POST /tahun-dasar/{td}/lapus`, `PATCH/DELETE /lapus/{id}`, `PUT /tahun-dasar/{td}/lapus/urutan` (urutan saudara), `PUT /lapus/{id}/anggota` (kelompok); `/konkordansi`, `/katalog?q=`, `/satuan`, `/sumber-data`, `/wilayah` |
+| Akses (F1) | `/pengguna` (+ `/reset-sandi`, `/reset-totp`, `/buka-kunci`), `/peran`, `/izin`, `/penugasan` (kategori diperluas ke lapus daun), `GET /audit`, `GET /audit/verifikasi` |
 | Putaran | `GET/POST /putaran`, `POST /putaran/{id}/kunci`, `/buka-kunci`, `GET /putaran/{a}/banding/{b}` |
 | Data dasar | `GET /putaran/{p}/lapus/{l}/item?wilayah=`, `POST /item` (+ Komoditas), `PATCH /item/{id}` (berlaku/nonaktif/sambung), `PUT /nilai` (batch sel), `GET/PUT /seri-referensi` |
 | Impor/ekspor | `POST /impor/templat` → pratinjau; `POST /impor/{id}/terapkan`; `GET /ekspor/templat?td=&wilayah=&kosong=`; `POST /impor/lk01`; `POST /impor/rilis` |
@@ -117,3 +118,11 @@ Semua endpoint tulis:
 | Lainnya | `POST /api/auth/refresh`, `/logout`, `/ganti-sandi` | sandi awal wajib diganti (min. 12 karakter) sebelum endpoint lain dapat dipakai |
 
 Alasan perubahan dikirim lewat header `X-Alasan` (UTF-8, *percent-encoded*) dan disimpan ke `app.alasan` untuk trigger audit.
+
+## 9. Master data (F1)
+
+- **Urutan tabel pokok.** `ref.lapus.urutan` selalu hasil penelusuran *depth-first* pohon: anak tepat di bawah induknya, urutan antarsaudara diatur admin (seret atau ▲▼). Setiap tambah/pindah/hapus menyusun ulang `urutan` dan `level` seluruh pohon, sehingga `lk.v_tabel_pokok` langsung mengikuti tanpa mengubah kode.
+- **Aturan pohon.** Kategori, kelompok, dan baris total (NTB, TOP, SOP, TOP.SOP, PDRB, PDRB.NM) tidak berinduk; induk harus kategori/subkategori aktif; kedalaman maksimal 4; lapus berisi item tidak dapat dijadikan induk; anggota kelompok tidak boleh induk dan turunannya sekaligus (hitung ganda). Lapus berdata (boleh punya item dan penugasan): daun, TOP, SOP.
+- **Hapus = nonaktifkan bila dipakai data.** Penghapusan dicoba dalam *savepoint*; bila ditolak *foreign key* (atau dirujuk tautan/riwayat/antrean), baris dinonaktifkan. Tahun dasar dipakai → `arsip`. Pengguna tidak pernah dihapus (nonaktif + semua sesi dicabut). Penugasan diakhiri (`berlaku_sampai` = kemarin). Peran dipakai → nonaktif (tidak memberi izin).
+- **Penjaga hak akses.** Minimal satu pengguna aktif tetap memegang `pengguna.kelola`; admin tidak dapat menonaktifkan akunnya sendiri. Akun sistem (`sistem.worker`) tidak dapat diubah dari UI.
+- **Keamanan DB (migrasi 0003).** RLS tulis `ref.*` hanya dengan izin `master.kelola`; tulis `sec.peran`, `sec.peran_izin`, `sec.pengguna_peran`, `lk.penugasan` hanya dengan `pengguna.kelola`. Semua tabel master diaudit; `sec.pengguna` diaudit tanpa hash sandi/rahasia TOTP dan tanpa pembukuan login. CLI `buat-pengguna` (bootstrap admin pertama) memakai koneksi pemilik; di Docker jalankan lewat layanan `migrate`.

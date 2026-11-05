@@ -1,7 +1,7 @@
 # data rahasia - JANGAN di-commit
 *TERISI*.xlsx
 *.xlsm
-golden/
+/golden/
 .env
 .env.*
 !.env.example
@@ -20,3 +20,4 @@ dist/
 .ruff_cache/
 node_modules/
 coverage/
+*.tsbuildinfo

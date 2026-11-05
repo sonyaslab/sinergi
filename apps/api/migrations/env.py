@@ -4,8 +4,9 @@ from __future__ import annotations
 from logging.config import fileConfig
 
 from alembic import context
-from sinergi_api.app.config import Pengaturan
 from sqlalchemy import create_engine, pool
+
+from sinergi_api.app.config import Pengaturan
 
 config = context.config
 if config.config_file_name is not None:

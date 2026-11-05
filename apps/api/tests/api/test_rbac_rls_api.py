@@ -8,10 +8,10 @@ from __future__ import annotations
 import pytest
 from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
-from sinergi_api.app.deps import Pengguna, butuh_izin, koneksi
-from sinergi_api.app.main import buat_app
 from sqlalchemy import Connection, text
 
+from sinergi_api.app.deps import Pengguna, butuh_izin, koneksi
+from sinergi_api.app.main import buat_app
 from tests.conftest import masuk
 
 pytestmark = pytest.mark.db

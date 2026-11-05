@@ -35,7 +35,7 @@ Paket ini siap dipakai di Claude Code untuk membangun sistem LK PDRB terintegras
 
 Templat TERISI dan berkas LK (.xlsm) bersifat rahasia dan tidak boleh di-commit.
 
-## Menjalankan (status: F0 Fondasi)
+## Menjalankan (status: F1 Master data)
 
 Dengan Docker (server internal):
 
@@ -43,7 +43,7 @@ Dengan Docker (server internal):
 cp .env.example .env          # lalu ganti semua rahasia
 make tls-dev                  # sertifikat swatanda (atau pasang sertifikat resmi di deploy/tls/)
 make up                       # db -> migrate (Alembic) -> api, worker, web (https://host/)
-docker compose run --rm api python -m sinergi_api.cli buat-pengguna --username admin.sinergi --nama "Admin" --peran admin
+docker compose run --rm migrate python -m sinergi_api.cli buat-pengguna --username admin.sinergi --nama "Admin" --peran admin
 ```
 
 Tanpa Docker (pengembangan; butuh PostgreSQL 16, Python 3.12, Node 22):
