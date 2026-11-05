@@ -183,3 +183,53 @@ def td_uji(klien, admin_conn):
         return r.json()
 
     return _buat
+
+
+# ---- tahun dasar salinan dan putaran (uji F3 impor/data dasar)
+@pytest.fixture
+def td_salin(admin_conn):
+    """td_salin('TD2025'|'TD2010') -> id tahun dasar baru berisi salinan pohon + kelompok (konfigurasi sama)."""
+
+    def _buat(sumber: str = "TD2025") -> int:
+        src = admin_conn.execute("SELECT id, tahun_dasar, klasifikasi, tahun_awal_seri, tahun_baseline_eks,"
+                                 " jangkar_dari_data FROM ref.tahun_dasar WHERE kode = %s", (sumber,)).fetchone()
+        kode = f"TI{secrets.randbelow(90000) + 10000}"
+        td = admin_conn.execute(
+            "INSERT INTO ref.tahun_dasar (kode, tahun_dasar, status, tahun_awal_seri, klasifikasi, tahun_baseline_eks,"
+            " jangkar_dari_data) VALUES (%s, %s, 'rencana', %s, %s, %s, %s) RETURNING id",
+            (kode, src[1], src[3], src[2], src[4], src[5])).fetchone()[0]
+        admin_conn.execute(
+            "INSERT INTO ref.lapus (tahun_dasar_id, kode, nama, level, urutan, jenis, is_migas, kode_lk_bps)"
+            " SELECT %s, kode, nama, level, urutan, jenis, is_migas, kode_lk_bps FROM ref.lapus"
+            " WHERE tahun_dasar_id = %s",
+            (td, src[0]))
+        admin_conn.execute(
+            "UPDATE ref.lapus c SET induk_id = pb.id FROM ref.lapus s, ref.lapus ps, ref.lapus pb"
+            " WHERE c.tahun_dasar_id = %s AND s.tahun_dasar_id = %s AND s.kode = c.kode AND ps.id = s.induk_id"
+            " AND pb.tahun_dasar_id = %s AND pb.kode = ps.kode", (td, src[0], td))
+        admin_conn.execute(
+            "INSERT INTO ref.lapus_kelompok (kelompok_id, anggota_id) SELECT kb.id, ab.id FROM ref.lapus_kelompok k"
+            " JOIN ref.lapus ks ON ks.id = k.kelompok_id JOIN ref.lapus as_ ON as_.id = k.anggota_id"
+            " JOIN ref.lapus kb ON kb.tahun_dasar_id = %s AND kb.kode = ks.kode"
+            " JOIN ref.lapus ab ON ab.tahun_dasar_id = %s AND ab.kode = as_.kode WHERE ks.tahun_dasar_id = %s",
+            (td, td, src[0]))
+        return td
+
+    return _buat
+
+
+@pytest.fixture
+def putaran_uji(admin_conn):
+    def _buat(td: int, awal=(2019, 1), akhir=(2026, 2), status: str = "terbuka") -> int:
+        pid = {(y, q): i for i, y, q in admin_conn.execute("SELECT id, tahun, triwulan FROM ref.periode").fetchall()}
+        return admin_conn.execute(
+            "INSERT INTO lk.putaran (tahun_dasar_id, tahun, triwulan, nomor, nama, jenis, status, periode_awal_id,"
+            " periode_akhir_id) VALUES (%s, %s, %s, %s, 'Uji impor', 'BACKCAST', %s, %s, %s) RETURNING id",
+            (td, akhir[0], akhir[1], secrets.randbelow(30000) + 100, status, pid[awal], pid[akhir])).fetchone()[0]
+
+    return _buat
+
+
+@pytest.fixture
+def uid_worker(admin_conn) -> int:
+    return admin_conn.execute("SELECT id FROM sec.pengguna WHERE username = 'sistem.worker'").fetchone()[0]

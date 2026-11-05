@@ -5,6 +5,7 @@ import { Layout } from "./components/Layout";
 import { PenyediaTahunDasar } from "./konteks/TahunDasar";
 import { menuUntuk } from "./menu";
 import { Beranda } from "./pages/Beranda";
+import { DataDasar } from "./pages/DataDasar";
 import { GantiSandi } from "./pages/GantiSandi";
 import { Login } from "./pages/Login";
 import { JejakAudit } from "./pages/JejakAudit";
@@ -14,6 +15,7 @@ import { Segera } from "./pages/Segera";
 
 // Layar yang sudah dibangun; menu lain menampilkan "dibangun pada fase Fx".
 const HALAMAN: Record<string, () => JSX.Element> = {
+  "/data-dasar": () => <DataDasar />,
   "/master": () => <MasterData />,
   "/pengguna": () => <PenggunaAkses />,
   "/audit": () => <JejakAudit />,

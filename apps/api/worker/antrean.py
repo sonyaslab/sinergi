@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, text
 
 from ..app import db
+from ..data_dasar import validasi_db
 from ..engine import GalatMesin, HasilWilayah, hitung_wilayah
 from .muat import STATUS_PRATINJAU, muat
 from .tulis import tulis
@@ -52,7 +53,9 @@ def hitung_dan_tulis(conn: Connection, putaran_id: int, wilayah: str) -> dict[st
                  {"p": putaran_id, "w": wilayah})
     m, pu = muat(conn, putaran_id, wilayah)
     h = hitung_wilayah(m)
-    return tulis(conn, pu, wilayah, m, h)
+    n = tulis(conn, pu, wilayah, m, h)
+    n["hasil_validasi"] = validasi_db.jalankan(conn, putaran_id, wilayah, pu.awal, pu.akhir, m, h)
+    return n
 
 
 def pratinjau(conn: Connection, putaran_id: int, wilayah: str) -> HasilWilayah:
@@ -89,7 +92,7 @@ def proses_satu(uid: int) -> Job | None:
                 " AND status = 'menunggu' AND id <> :id FOR UPDATE SKIP LOCKED"),
                 {"p": job.putaran_id, "w": job.wilayah_kode, "id": job.id})]
             n = hitung_dan_tulis(c, job.putaran_id, job.wilayah_kode)
-            pesan = f"{n['hasil_lapus']} baris hasil lapus ditulis"
+            pesan = f"{n['hasil_lapus']} baris hasil lapus, {n['hasil_validasi']} temuan validasi"
             c.execute(text("UPDATE lk.antrean_hitung SET status = 'selesai', selesai_pada = now(),"
                            " pesan = CASE WHEN id = :id THEN :m ELSE 'digabung ke job ' || :id END"
                            " WHERE id = ANY(:ids)"), {"id": job.id, "m": pesan, "ids": [job.id, *gabung]})

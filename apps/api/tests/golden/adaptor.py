@@ -43,6 +43,21 @@ def pohon_datar(kode_lapus: list[str], jenis: dict[str, str] | None = None) -> l
             for i, k in enumerate(kode_lapus)]
 
 
+def kode_sumber(data: dict[str, dict]) -> set[str]:
+    """Kode lapus yang dirujuk tautan (MARGIN/HASIL); lapus sumber tanpa data tetap perlu baris pohon (bernilai 0)."""
+    return {x for d in data.values() for it in d["item"] for t in it.get("tautan", [])
+            for x in (t.get("lapus_sumber") or []) if isinstance(x, str)}
+
+
+def petakan_lapus_sumber(data: dict[str, dict], ids: dict[str, int]) -> None:
+    """Ganti kode lapus sumber tautan (dari templat) dengan id pohon spek, di tempat."""
+    for d in data.values():
+        for it in d["item"]:
+            for t in it.get("tautan", []):
+                if t.get("lapus_sumber"):
+                    t["lapus_sumber"] = [ids[x] if isinstance(x, str) else x for x in t["lapus_sumber"]]
+
+
 # ------------------------------------------------------------------ perbandingan
 def selisih_relatif(a: float, b: float) -> float:
     if math.isnan(a) or math.isnan(b):
@@ -138,36 +153,74 @@ def _baca_blok(path: str, sheet: str, kunci: list[str]) -> list[tuple[dict, dict
 
 
 def spek_dari_templat(path: str, tahun_baseline: int, jangkar_dari_data: bool) -> tuple[dict[str, dict], dict]:
-    """Kembalikan ({wilayah: data_per_kode_lapus}, info) dari templat terisi.
+    """Kembalikan ({wilayah: data_per_kode_lapus}, info) dari templat terisi (pembaca rujukan tools/baca_templat).
 
     data_per_kode_lapus = {kode_lapus: {"item": [...], "penyesuaian": [...]}}; referensi per wilayah di info.
-    Baris RUMUS: tidak dibaca nilainya; tautan RUMUS dikenali dari teksnya, REF: menjadi SERI_REFERENSI.
+    Tautan dari kolom "Tautan / Rumus" (tata bahasa sinergi_api.impor.tautan): REF -> SERI_REFERENSI; RUMUS/MARGIN ->
+    RUMUS; HASIL -> HASIL_LAPUS (lapus_sumber berisi KODE lapus; petakan ke id sebelum hitung); "ikut item lain" ->
+    seri item sumber disalin (setara seri referensi, keputusan 5). Baris rumus/tautan tidak dibaca nilainya. TD tanpa
+    jangkar_dari_data: IH bersatuan "2010=100" tanpa jangkar = 100 (keputusan 3).
     """
     from tools.baca_templat import baca
+
+    from sinergi_api.impor import tautan as tt
 
     items, pesan = baca(path)
     per_wil: dict[str, dict[str, dict]] = defaultdict(lambda: defaultdict(lambda: {"item": [], "penyesuaian": []}))
     nomor = 0
-    for (wil, lapus, metode, _no), it in sorted(items.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]),
-                                                                              str(kv[0][2]), int(kv[0][3] or 0))):
+    urutan = sorted(items.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]), str(kv[0][2]), int(kv[0][3] or 0)))
+    spek_item: dict[tuple, dict] = {}
+    nama_item: dict[tuple, str] = {}
+    ikut: list[tuple[tuple, str, Any]] = []  # (kunci item pengikut, seri, TautanTeks)
+    for (wil, lapus, metode, _no), it in urutan:
         if metode not in ("REV", "EKS", "DEF"):
             continue
         nomor += 1
         seri, par, taut = {}, {}, []
+        margin = None
         for kode, s in it["seri"].items():
-            seri[kode] = {_label_urut(p): x for p, x in s["nilai"].items()}
+            t = tt.urai(s.get("tautan"), kode, metode)
+            abaikan = t is not None and t.nilai_diabaikan
+            seri[kode] = {} if abaikan else {_label_urut(p): x for p, x in s["nilai"].items()}
             j = s.get("jangkar")
+            kp = {"RKA": "RKA_TD", "HARGA": "H_TD", "IH": "IH_TD", "R_MARGIN": "R_MARGIN_TD"}.get(kode, kode)
             if _num(j):
-                par[{"RKA": "RKA_TD", "HARGA": "H_TD", "IH": "IH_TD", "R_MARGIN": "R_MARGIN_TD"}.get(kode, kode)] = j
-            t = (s.get("tautan") or "").strip()
-            if t.upper().startswith("REF:"):
-                taut.append({"jenis_seri": kode, "sumber": "SERI_REFERENSI", "seri_ref": t[4:].strip()})
-            elif t.upper().startswith("RUMUS:"):
-                rm = {"KUANTUM": "TPK_X_KAMAR", "HARGA": "JANGKAR_X_IH_100", "OUT_ADHB": "KAPITA_X_PENDUDUK_X_3"}[kode]
-                taut.append({"jenis_seri": kode, "sumber": "RUMUS", "rumus": rm})
-        per_wil[str(wil)][str(lapus)]["item"].append(
-            {"id": nomor, "metode": metode, "jenis_indeks": it.get("jenis_indeks"), "seri": seri, "parameter": par,
-             "tautan": taut})
+                par[kp] = j
+            elif kode == "IH" and not jangkar_dari_data and "2010=100" in str(s.get("satuan") or "").replace(" ", ""):
+                par[kp] = 100.0
+            if t is None or t.jenis in ("KETERANGAN", "HITUNG_SISTEM"):
+                continue
+            if t.jenis == "REF":
+                taut.append({"jenis_seri": kode, "sumber": "SERI_REFERENSI", "seri_ref": t.seri_ref,
+                             "faktor": t.faktor})
+            elif t.jenis == "RUMUS":
+                taut.append({"jenis_seri": kode, "sumber": "RUMUS", "rumus": t.rumus, "faktor": t.faktor})
+            elif t.jenis == "MARGIN":
+                margin = {"jenis_seri": "OUT_ADHB", "sumber": "RUMUS", "rumus": t.rumus, "lapus_sumber": list(t.lapus),
+                          "faktor": t.faktor}
+            elif t.jenis == "HASIL":
+                taut.append({"jenis_seri": kode, "sumber": "HASIL_LAPUS", "lapus_sumber": list(t.lapus),
+                             "besaran": t.besaran, "faktor": t.faktor})
+            elif t.jenis == "IKUT":
+                ikut.append(((str(wil), str(lapus), metode, int(_no)), kode, t))
+        if margin is not None:
+            seri["OUT_ADHB"] = {}
+            taut.append(margin)
+        spek = {"id": nomor, "metode": metode, "jenis_indeks": it.get("jenis_indeks"), "seri": seri, "parameter": par,
+                "tautan": taut}
+        kunci = (str(wil), str(lapus), metode, int(_no))
+        spek_item[kunci] = spek
+        nama_item[kunci] = " ".join(str(it["nama"]).split()).lower()
+        per_wil[str(wil)][str(lapus)]["item"].append(spek)
+    for kp_, kode, t in ikut:
+        cocok = [k for k in spek_item if k[0] == kp_[0] and k != kp_ and (
+            (t.ikut_kode and f"{k[1].replace('.', '').upper()}{k[3]:02d}" == t.ikut_kode) or
+            (t.ikut_nama and k[1] == kp_[1] and nama_item[k] == t.ikut_nama.lower()))]
+        if len(cocok) > 1:
+            cocok = [k for k in cocok if k[2] == kp_[2]] or cocok
+        assert len(cocok) == 1, (t, cocok)
+        seri_s = t.ikut_seri or kode
+        spek_item[kp_]["seri"][seri_s] = dict(spek_item[cocok[0]]["seri"].get(seri_s, {}))
     kol = ["Kode Wilayah", "Kode Lapus", "Tahap", "Metode", "Jenis", "Harga"]
     for meta, nilai in _baca_blok(path, "PENYESUAIAN", kol):
         for u, x in nilai.items():

@@ -4,12 +4,15 @@ Dipakai sebagai acuan importer backend (apps/api/impor). Tidak menyimpan berkas 
 
     python tools/baca_templat.py Templat_Data_Dasar_TD2025_KOSONG.xlsx  > ringkasan.json
 
-Aturan baca (WAJIB sama di backend):
-- Sheet kategori = sheet yang namanya satu huruf A..V. Header di baris 4; data mulai baris 5.
+Aturan baca (WAJIB sama di backend apps/api/impor/templat.py):
+- Sheet kategori = sheet yang namanya satu huruf A..V, plus sheet TOP_SOP (item pajak/subsidi atas produk, keputusan 1).
+  Header di baris 4; data mulai baris 5.
 - Kolom kunci: Kode Wilayah, Kode Lapus, Metode, No Item, Komoditas / Rincian, Kode Seri, Satuan, Jangkar Tahun Dasar.
 - Kolom periode berlabel 'YYYY-Tq'. Sel kosong = tidak tersedia (BUKAN 0).
 - Baris dengan Tautan/Rumus diawali 'RUMUS:' TIDAK dibaca nilainya (sistem menghitung ulang dari komponen).
 - Baris dengan Tautan 'REF: <kode>' mengambil seri dari sheet SERI_REFERENSI.
+- Tata bahasa lengkap kolom Tautan / Rumus (MARGIN:, HASIL:, "Dihitung sistem", "Ikut IH item C201", "Harga mengikuti
+  item Sapi", faktor) ada di apps/api/impor/tautan.py; pembaca ini mengembalikan teksnya apa adanya.
 - Satu item = (Kode Wilayah, Kode Lapus, Metode, No Item). Nama komoditas harus sama di semua baris item.
 """
 from __future__ import annotations
@@ -34,7 +37,7 @@ def baca(path: str):
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     items, pesan = {}, []
     for sh in wb.sheetnames:
-        if not re.fullmatch(r"[A-V]", sh):
+        if not re.fullmatch(r"[A-V]", sh) and sh != "TOP_SOP":
             continue
         rows = wb[sh].iter_rows(min_row=4, values_only=True)
         hd = list(next(rows))
@@ -45,7 +48,7 @@ def baca(path: str):
                 continue
             g = lambda h: r[col[h]] if h in col else None
             key = (str(g("Kode Wilayah")), g("Kode Lapus"), g("Metode"), g("No Item"))
-            if not str(key[1]).startswith(sh):
+            if sh != "TOP_SOP" and not str(key[1]).startswith(sh):
                 pesan.append(f"{sh}!baris {n}: lapus {key[1]} bukan kategori {sh}")
             it = items.setdefault(key, {"nama": g("Komoditas / Rincian"), "seri": {}, "jenis_indeks": None})
             if it["nama"] != g("Komoditas / Rincian"):

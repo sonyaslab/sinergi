@@ -11,7 +11,7 @@ export interface ItemMenu {
 export const MENU: ItemMenu[] = [
   { jalur: "/", label: "Beranda", izin: [], fase: "F0" },
   { jalur: "/data-dasar", label: "Data Dasar", izin: ["data_dasar.isi", "data_dasar.impor", "lk.setujui"], fase: "F3" },
-  { jalur: "/lk-hitung", label: "LK Hitung NTB", izin: ["data_dasar.isi", "lk.setujui"], fase: "F3" },
+  { jalur: "/lk-hitung", label: "LK Hitung NTB", izin: ["data_dasar.isi", "lk.setujui"], fase: "F4" },
   { jalur: "/biaya-antara", label: "Biaya Antara", izin: ["biaya_antara.isi"], fase: "F4" },
   {
     jalur: "/putaran",

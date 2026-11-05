@@ -158,6 +158,10 @@ PDRB Put 0 = NTB (baris TOP.SOP = 0). Dalam TD2025, PDRB = NTB atas harga dasar 
 | V13 | Lapus tanpa item dan tanpa status NIHIL | Blokir kunci putaran |
 | V14 | TOP/SOP kosong saat putaran akan dikunci | Blokir kunci (dapat dikecualikan admin dengan alasan) |
 | V15 | Hasil tersimpan berbeda dari hitung ulang (hash input berubah) | Tidak mungkin terjadi; diuji di CI |
+| V16 | Satuan isian berbeda dengan satuan item (E7) | Peringatan |
+| V17 | Item berlaku tetapi semua seri wajib kosong pada periode berjalan | Peringatan |
+
+Tingkat dan ambang dibaca dari `ref.validasi` (F3; ambang V08/V11 dan kalibrasi P95 per lapus: docs/02 §11 keputusan 16).
 
 ---
 

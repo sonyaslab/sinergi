@@ -20,7 +20,16 @@ from tools.lk_xlsm_reader import adj_rekon_dari_tersimpan, baca_lk
 
 from sinergi_api.engine import Empat, hitung_wilayah, urut
 
-from .adaptor import URUT0, data_dari_lk, ke_masukan, pohon_datar, selisih_relatif, spek_dari_templat
+from .adaptor import (
+    URUT0,
+    data_dari_lk,
+    ke_masukan,
+    kode_sumber,
+    petakan_lapus_sumber,
+    pohon_datar,
+    selisih_relatif,
+    spek_dari_templat,
+)
 
 MANIFEST_CONTOH = {
     "wilayah": "6500",
@@ -136,11 +145,12 @@ def lk01_vs_tersimpan(golden: Path, manifest: dict, awal: int, akhir: int, tol: 
 def _spek_templat(path: Path, wil: str, awal: int, akhir: int) -> tuple[dict, dict[int, str]]:
     per_wil, info = spek_dari_templat(str(path), 2025, True)
     data = per_wil.get(wil, {})
-    kode = sorted(data)
+    kode = sorted(set(data) | kode_sumber(data))
     pohon = pohon_datar(kode, {"TOP": "top", "SOP": "sop"})
     ids = {r["kode"]: r["id"] for r in pohon}
+    petakan_lapus_sumber(data, ids)
     spec = {"tahun_baseline": 2025, "jangkar_dari_data": True, "awal": awal, "akhir": akhir, "pohon": pohon,
-            "referensi": info["referensi"].get(wil, {}), "data": {ids[k]: data[k] for k in kode}}
+            "referensi": info["referensi"].get(wil, {}), "data": {ids[k]: data[k] for k in data}}
     return spec, {v: k for k, v in ids.items()}
 
 
@@ -208,4 +218,38 @@ def templat_vs_lk(golden: Path, manifest: dict, awal: int, akhir: int, tol: floa
                               adj_rekon_dari_tersimpan(tersimpan.get(ind, {})))
         prod = h.lapus[lid].tahap["BENC"] if lid in h.lapus else None
         lap.catat(ind, *_bandingkan(prod, ref, h.sumbu, awal, akhir), tol)
+    return lap
+
+
+def db_vs_lk(benc: dict[str, dict[int, tuple]], golden: Path, manifest: dict, ke_lk: dict[str, str], awal: int,
+             akhir: int, tol: float = 1e-9) -> Laporan:
+    """Hasil DB (templat -> importer -> worker; tahap BENC per kode lapus) vs engine_ref atas LK 01 per rekap LK 02.
+
+    benc = {kode_lapus: {urut: (out_cp, gva_cp, out_k, gva_k)}}. Target F3: 72/72 lapus identik untuk TD2025 Put 0.
+    """
+    wil = str(manifest.get("wilayah", "6500"))
+    lewati = set(manifest.get("templat_beda_lk", []))
+    lap = Laporan("templat lewat importer (DB) vs LK 01")
+    cache: dict[str, tuple] = {}
+    for kode in sorted(benc):
+        ind = ke_lk.get(kode, kode)
+        if ind in lewati or ind not in manifest["lk01"]:
+            continue
+        berkas = manifest["lk01"][ind]
+        if berkas not in cache:
+            cache[berkas] = baca_lk(str(golden / berkas), wil)
+        per_ind, tersimpan = cache[berkas]
+        d = per_ind[ind]
+        ref = hitung_industri(list(d["rev"].values()), list(d["eks"].values()), list(d["def"].values()),
+                              d["adj"]["rev"], d["adj"]["eks"], d["adj"]["def"],
+                              adj_rekon_dari_tersimpan(tersimpan.get(ind, {})))
+        w, letak = 0.0, "-"
+        for j, a in enumerate(("out_cp", "gva_cp", "out_k", "gva_k")):
+            y = getattr(ref, a)
+            for u in range(awal, akhir + 1):
+                x = benc[kode].get(u, (0.0, 0.0, 0.0, 0.0))[j]
+                r = selisih_relatif(x, y[u - URUT0])
+                if r > w:
+                    w, letak = r, f"{a}@{_label(u)}"
+        lap.catat(ind, w, letak, tol)
     return lap

@@ -16,6 +16,7 @@ from engine_ref import kompilasi as kp
 from engine_ref.lk_engine import TAHUN_AWAL, AdjMetode, AdjRekon, hitung_industri, t_base_tahun, t_of
 
 from . import periksa as pk
+from .impor_db import benc_db, impor_dan_hitung
 
 pytestmark = pytest.mark.golden
 ROOT = Path(__file__).resolve().parents[4]
@@ -195,3 +196,15 @@ def test_alur_golden_peka_terhadap_selisih(golden_palsu, tmp_path):
     wb.save(salinan / m["templat_td2025"])
     lap = pk.templat_vs_lk(salinan, m, *pk.rentang(m))
     assert list(lap.beda) == ["A.1.a"] and lap.beda["A.1.a"].startswith(("out_", "gva_"))
+
+
+@pytest.mark.db
+def test_alur_golden_palsu_lewat_importer(golden_palsu, klien, sebagai, td_salin, putaran_uji, admin_conn, uid_worker):
+    """F3: templat terisi lewat importer + DB + worker = LK 01 (data palsu); alur yang sama dipakai data rahasia."""
+    m = pk.baca_manifest(golden_palsu)
+    awal, akhir = pk.rentang(m)
+    put = putaran_uji(td_salin("TD2025"), awal=(awal // 4, awal % 4 + 1), akhir=(akhir // 4, akhir % 4 + 1))
+    templat = golden_palsu / m["templat_td2025"]
+    impor_dan_hitung(klien, sebagai("admin"), put, templat, uid_worker)
+    lap = pk.db_vs_lk(benc_db(admin_conn, put, "6500"), golden_palsu, m, pk.kode_lk_templat(templat), awal, akhir)
+    assert not lap.beda and len(lap.identik) == 73, lap.ringkas()

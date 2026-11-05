@@ -125,3 +125,44 @@ export interface HasilMasuk {
   qr_svg: string | null;
   rahasia: string | null;
 }
+
+// ---- berkas: unggah badan mentah (xlsx/csv) dan unduh lampiran (templat, CSV)
+export async function unggahBerkas<T>(jalur: string, berkas: Blob): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(jalur, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json", "Content-Type": "application/octet-stream", "X-CSRF-Token": await pastikanCsrf() },
+      body: berkas,
+    });
+  } catch {
+    throw new GalatApi(0, "JARINGAN", "Tidak dapat terhubung ke server. Periksa jaringan/VPN.");
+  }
+  const isi = await r.json().catch(() => null);
+  if (r.ok) return isi as T;
+  if (r.status === 401 && (await refreshSesi())) return unggahBerkas<T>(jalur, berkas);
+  throw new GalatApi(r.status, isi?.kode ?? "HTTP", isi?.pesan ?? "Unggah gagal. Silakan coba lagi.", isi?.rincian);
+}
+
+export function namaDariHeader(cd: string | null, bawaan: string): string {
+  const m = /filename="?([^";]+)"?/i.exec(cd ?? "");
+  return m ? m[1] : bawaan;
+}
+
+export async function unduhBerkas(jalur: string, bawaan: string): Promise<void> {
+  const r = await fetch(jalur, { credentials: "include" });
+  if (!r.ok) {
+    const isi = await r.json().catch(() => null);
+    throw new GalatApi(r.status, isi?.kode ?? "HTTP", isi?.pesan ?? "Unduhan gagal.");
+  }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = namaDariHeader(r.headers.get("Content-Disposition"), bawaan);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

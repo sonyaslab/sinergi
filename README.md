@@ -35,7 +35,7 @@ Paket ini siap dipakai di Claude Code untuk membangun sistem LK PDRB terintegras
 
 Templat TERISI dan berkas LK (.xlsm) bersifat rahasia dan tidak boleh di-commit.
 
-## Menjalankan (status: F2 Mesin hitung)
+## Menjalankan (status: F3 Data dasar, templat, seri referensi, validasi)
 
 Dengan Docker (server internal):
 
@@ -59,7 +59,13 @@ make dev-web                  # http://localhost:5173 (proksi /api)
 
 Untuk pengembangan lewat `http://localhost` tanpa TLS, setel `SINERGI_COOKIE_SECURE=false` di `.env`.
 
-Uji: `make test` (oracle `engine_ref`, `db/test_schema.sql` 10 OK pada DB hasil Alembic, pytest unit/API/RLS/sinkron skema, Vitest) dan `make lint`.
+Uji: `make test` (oracle `engine_ref`, `db/test_schema.sql` 10 OK pada DB hasil Alembic, pytest unit/API/RLS/sinkron skema/impor-ekspor
+templat, Vitest) dan `make lint`.
+
+Layar F3: menu **Data Dasar** (pilih tahun dasar di header, putaran, wilayah) berisi tab Isian data (grid AG Grid, tempel dari Excel,
++ Komoditas, nonaktif/sambungkan, tautan seri, ikon validasi, kontribusi item), Seri referensi, Impor & ekspor (templat docs/05,
+CSV panjang; pratinjau selisih → terapkan), dan Validasi (V01–V17). Membuka putaran (layar Putaran) dibangun di F4; untuk
+pengembangan, putaran dapat dibuat lewat SQL seperti data demo.
 
 ## Golden test (mesin internal)
 
@@ -72,4 +78,6 @@ golden/Templat_Data_Dasar_TD2025_TERISI.xlsx
 ```
 
 Contoh isi `manifest.json` ada di `apps/api/tests/golden/periksa.py` (`MANIFEST_CONTOH`). Jalankan `make golden`
-(atau `SINERGI_GOLDEN=/jalur/golden make golden`). Laporan hanya memuat kode lapus dan selisih relatif.
+(atau `SINERGI_GOLDEN=/jalur/golden make golden`; butuh PostgreSQL seperti `make test`). Laporan hanya memuat kode lapus dan
+selisih relatif. Sejak F3 templat TERISI juga diuji lewat importer sungguhan (pratinjau tanpa galat format → terapkan → worker →
+`lk.hasil_lapus`) dan harus identik dengan LK untuk 72 lapus (`test_templat_terisi_lewat_importer_identik_lk01`).

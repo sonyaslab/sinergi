@@ -10,3 +10,23 @@ body,
 body {
   font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
 }
+
+/* Grid Data Dasar (AG Grid): warna sama dengan templat. Kuning = isian, hijau = rumus, biru = tertaut. */
+.ag-theme-quartz.grid-dd { --ag-font-size: 12px; --ag-row-height: 26px; --ag-header-height: 30px; --ag-cell-horizontal-padding: 6px; }
+.grid-dd .sel-isian { background-color: #fff7cc; }
+.grid-dd .sel-rumus { background-color: #e3f1e6; color: #334155; }
+.grid-dd .sel-taut { background-color: #e6f0fa; color: #334155; }
+.grid-dd .sel-kunci { color: #94a3b8; }
+.grid-dd .sel-ubah { font-weight: 600; color: #0f4589; box-shadow: inset 0 0 0 1px #1f6fd1; }
+.grid-dd .sel-tt { color: #64748b; font-style: italic; }
+.grid-dd .sel-luar-masa { background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(148,163,184,.18) 4px 6px); }
+.grid-dd .sel-v-blokir_ajukan, .grid-dd .sel-v-blokir_kunci { box-shadow: inset 0 0 0 2px #dc2626; }
+.grid-dd .sel-v-peringatan { box-shadow: inset 0 0 0 2px #f59e0b; }
+.grid-dd .sel-v-info { box-shadow: inset 0 0 0 1px #0ea5e9; }
+.grid-dd .baris-ganjil .kol-kunci { background-color: #f7f7f7; }
+.grid-dd .baris-genap .kol-kunci { background-color: #eef1f5; }
+.grid-dd .kol-ulang { color: #8a8a8a; }
+.titik-v { display: inline-block; width: 8px; height: 8px; border-radius: 9999px; margin-left: 4px; }
+.titik-blokir_ajukan, .titik-blokir_kunci { background: #dc2626; }
+.titik-peringatan { background: #f59e0b; }
+.titik-info { background: #0ea5e9; }

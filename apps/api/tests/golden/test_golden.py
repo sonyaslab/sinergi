@@ -2,9 +2,10 @@
 
     make golden                    # atau: SINERGI_GOLDEN=/jalur/golden make golden
 
-Kriteria F2: mesin produksi identik dengan engine_ref (relatif ≤ 1e-9) untuk setiap lapus LK 01 dan templat terisi;
+Kriteria F2/F3: mesin produksi identik dengan engine_ref (relatif ≤ 1e-9) untuk setiap lapus LK 01 dan templat terisi;
 hasil simpan LK 01 identik (≤ 1e-6, seperti tools/validasi_engine_vs_lk.py) kecuali lapus `tersimpan_usang` (B.3,
-temuan T3); templat terisi = LK 01 untuk `harap_identik` lapus (72). Isi folder: lihat tests/golden/periksa.py.
+temuan T3); templat terisi = LK 01 untuk `harap_identik` lapus (72), juga lewat importer sungguhan + DB + worker
+(F3). Isi folder: lihat tests/golden/periksa.py.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from . import periksa as pk
+from .impor_db import benc_db, impor_dan_hitung
 
 GOLDEN = Path(os.environ.get("SINERGI_GOLDEN") or Path(__file__).resolve().parents[4] / "golden")
 pytestmark = [pytest.mark.golden,
@@ -73,5 +75,21 @@ def test_templat_identik_lk01_72_lapus():
         pytest.skip("butuh manifest lk01 dan templat TD2025 TERISI")
     m.setdefault("templat_td2025", _templat().name)  # type: ignore[union-attr]
     lap = pk.templat_vs_lk(GOLDEN, m, *pk.rentang(m))
+    assert not lap.beda, lap.ringkas()
+    assert len(lap.identik) >= int(m.get("harap_identik", len(lap.identik))), lap.ringkas()
+
+
+@pytest.mark.db
+def test_templat_terisi_lewat_importer_identik_lk01(klien, sebagai, td_salin, putaran_uji, admin_conn, uid_worker):
+    """F3: Templat TD2025 TERISI -> importer (tanpa galat format) -> DB -> worker = LK 01 untuk `harap_identik` (72)."""
+    m = _manifest()
+    t = _templat()
+    if not (m.get("lk01") and t):
+        pytest.skip("butuh manifest lk01 dan templat TD2025 TERISI")
+    awal, akhir = pk.rentang(m)
+    put = putaran_uji(td_salin("TD2025"), awal=(awal // 4, awal % 4 + 1), akhir=(akhir // 4, akhir % 4 + 1))
+    impor_dan_hitung(klien, sebagai("admin"), put, t, uid_worker)
+    wil = str(m.get("wilayah", "6500"))
+    lap = pk.db_vs_lk(benc_db(admin_conn, put, wil), GOLDEN, m, pk.kode_lk_templat(t), awal, akhir)
     assert not lap.beda, lap.ringkas()
     assert len(lap.identik) >= int(m.get("harap_identik", len(lap.identik))), lap.ringkas()

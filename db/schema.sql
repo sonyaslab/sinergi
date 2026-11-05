@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SINERGI (Sistem Neraca Ekonomi Regional Terintegrasi) — skema basis data (PostgreSQL 16)
--- Versi 4 (+ migrasi Alembic s.d. 0003) — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
+-- Versi 4 (+ migrasi Alembic s.d. 0005) — mendukung TD2010/KBLI 2020 (produksi berjalan) dan TD2025/KBLI 2025 (rebasing),
 -- kategori M,N dan R,S,T,U(,V) terpisah + kelompok publikasi; komoditas dinamis per triwulan;
 -- seri 2010–2045, item dinamis per wilayah/lapus/metode, rasio KA per item,
 -- adjustment 3 tingkat (METODE, REKON, SIMULASI), multi-operator, audit.
@@ -291,10 +291,25 @@ CREATE TABLE lk.item (
   dibuat_oleh        bigint REFERENCES sec.pengguna(id),
   dibuat_pada        timestamptz NOT NULL DEFAULT now(),
   alasan             text,
+  padanan_teks       text,                                           -- migrasi 0005: isi asli kolom Kode LK BPS / Lapus TD2025
   UNIQUE (tahun_dasar_id, wilayah_kode, lapus_id, metode_kode, nomor),
   CHECK (metode_kode <> 'EKS' OR jenis_indeks IS NOT NULL)
 );
 CREATE INDEX ON lk.item (wilayah_kode, lapus_id, metode_kode) WHERE status = 'aktif';
+
+-- Migrasi 0005: satu baris templat = satu seri item (metadata untuk ekspor/impor templat yang sama persis).
+CREATE TABLE lk.seri_item (
+  item_id       bigint   NOT NULL REFERENCES lk.item(id) ON DELETE CASCADE,
+  jenis_seri    text     NOT NULL,
+  urutan        smallint NOT NULL DEFAULT 0,
+  satuan        text,
+  label         text,
+  catatan       text,
+  lokasi_sumber text,
+  teks_tautan   text,
+  PRIMARY KEY (item_id, jenis_seri)
+);
+COMMENT ON TABLE lk.seri_item IS 'Satu baris templat = satu seri item: satuan, label, catatan, lokasi sumber, teks asli kolom Tautan/Rumus, urutan baris. Nilai di lk.nilai_item, tautan di lk.tautan_seri.';
 
 -- Batas jumlah item per metode (REV 100, EKS 50, DEF 50 — mengikuti LK).
 CREATE OR REPLACE FUNCTION lk.cek_maks_item() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -367,10 +382,11 @@ CREATE TABLE lk.seri_referensi (
   id         serial PRIMARY KEY,
   kode       text NOT NULL UNIQUE,
   nama       text NOT NULL,
-  jenis      text NOT NULL CHECK (jenis IN ('indeks_harga','indeks_produksi','indeks_nilai','pdrb_td2010','lainnya')),
+  jenis      text NOT NULL CHECK (jenis IN ('indeks_harga','indeks_produksi','indeks_nilai','pdrb_td2010','lainnya','harga')),  -- harga: migrasi 0005
   satuan     text,
   sumber_id  integer REFERENCES ref.sumber_data(id),
-  keterangan text
+  keterangan text,
+  lapus_pemilik_id integer REFERENCES ref.lapus(id)   -- migrasi 0005: operator lapus ini boleh mengisi nilainya
 );
 
 CREATE TABLE lk.nilai_seri_referensi (
@@ -512,9 +528,25 @@ CREATE TABLE lk.hasil_validasi (
   pesan              text NOT NULL,
   dikonfirmasi_oleh  bigint REFERENCES sec.pengguna(id),
   alasan_konfirmasi  text,
-  dibuat_pada        timestamptz NOT NULL DEFAULT now()
+  dibuat_pada        timestamptz NOT NULL DEFAULT now(),
+  jenis_seri         text,                                         -- migrasi 0005
+  tingkat            text NOT NULL DEFAULT 'peringatan' CHECK (tingkat IN ('info','peringatan','blokir_ajukan','blokir_kunci')),
+  kunci              text                                          -- kunci stabil temuan (konfirmasi bertahan setelah hitung ulang)
 );
 CREATE INDEX ON lk.hasil_validasi (putaran_id, wilayah_kode, lapus_id);
+
+-- Migrasi 0005: konfirmasi beralasan atas temuan validasi (mis. V05), bertahan setelah hitung ulang.
+CREATE TABLE lk.konfirmasi_validasi (
+  putaran_id        bigint  NOT NULL REFERENCES lk.putaran(id) ON DELETE CASCADE,
+  wilayah_kode      char(4) NOT NULL REFERENCES ref.wilayah(kode),
+  lapus_id          integer NOT NULL REFERENCES ref.lapus(id),
+  kode_validasi     text    NOT NULL REFERENCES ref.validasi(kode),
+  kunci             text    NOT NULL,
+  alasan            text    NOT NULL CHECK (length(trim(alasan)) >= 10),
+  dikonfirmasi_oleh bigint  REFERENCES sec.pengguna(id),
+  dikonfirmasi_pada timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (putaran_id, wilayah_kode, lapus_id, kode_validasi, kunci)
+);
 
 -- Antrean hitung (worker latar; tanpa Redis).
 CREATE TABLE lk.antrean_hitung (
@@ -549,7 +581,7 @@ DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['nilai_item','parameter_item','nilai_seri_referensi','penyesuaian',
-                           'hasil_item','hasil_metode','hasil_lapus','status_lapus'] LOOP
+                           'hasil_item','hasil_metode','hasil_lapus','status_lapus','konfirmasi_validasi'] LOOP
     EXECUTE format('CREATE TRIGGER trg_%s_kunci BEFORE INSERT OR UPDATE OR DELETE ON lk.%I
                     FOR EACH ROW EXECUTE FUNCTION lk.tolak_jika_terkunci()', t, t);
   END LOOP;
@@ -584,18 +616,59 @@ CREATE POLICY baca_nilai ON lk.nilai_item     FOR SELECT USING (sec.uid() IS NOT
 CREATE POLICY baca_param ON lk.parameter_item FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
 CREATE POLICY baca_adj   ON lk.penyesuaian    FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
 
-CREATE POLICY tulis_item  ON lk.item FOR ALL
-  USING (lk.boleh_tulis(wilayah_kode, lapus_id)) WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id));
-CREATE POLICY tulis_nilai ON lk.nilai_item FOR ALL
-  USING (lk.boleh_tulis_item(item_id)) WITH CHECK (lk.boleh_tulis_item(item_id));
-CREATE POLICY tulis_param ON lk.parameter_item FOR ALL
-  USING (lk.boleh_tulis_item(item_id)) WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_item_i ON lk.item FOR INSERT WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id));
+CREATE POLICY tulis_item_u ON lk.item FOR UPDATE USING (lk.boleh_tulis(wilayah_kode, lapus_id)) WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id));
+CREATE POLICY tulis_item_d ON lk.item FOR DELETE USING (lk.boleh_tulis(wilayah_kode, lapus_id));
+CREATE POLICY tulis_nilai_i ON lk.nilai_item FOR INSERT WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_nilai_u ON lk.nilai_item FOR UPDATE USING (lk.boleh_tulis_item(item_id)) WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_nilai_d ON lk.nilai_item FOR DELETE USING (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_param_i ON lk.parameter_item FOR INSERT WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_param_u ON lk.parameter_item FOR UPDATE USING (lk.boleh_tulis_item(item_id)) WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_param_d ON lk.parameter_item FOR DELETE USING (lk.boleh_tulis_item(item_id));
 -- Penyesuaian tahap SIMULASI hanya untuk pemegang izin simulasi.edit.
-CREATE POLICY tulis_adj ON lk.penyesuaian FOR ALL
-  USING (CASE WHEN tahap = 'SIMULASI' THEN sec.punya_izin('simulasi.edit')
-              ELSE lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('penyesuaian.putus') END)
-  WITH CHECK (CASE WHEN tahap = 'SIMULASI' THEN sec.punya_izin('simulasi.edit')
-                   ELSE lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('penyesuaian.putus') END);
+-- Migrasi 0005: kebijakan tulis per perintah (INSERT/UPDATE/DELETE), bukan FOR ALL, agar fungsi izin tidak
+-- dievaluasi per baris saat SELECT (baca diatur kebijakan baca_*; hak baca tidak berubah).
+CREATE POLICY tulis_adj_i ON lk.penyesuaian FOR INSERT WITH CHECK (CASE WHEN tahap = 'SIMULASI' THEN sec.punya_izin('simulasi.edit') ELSE lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('penyesuaian.putus') END);
+CREATE POLICY tulis_adj_u ON lk.penyesuaian FOR UPDATE USING (CASE WHEN tahap = 'SIMULASI' THEN sec.punya_izin('simulasi.edit') ELSE lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('penyesuaian.putus') END) WITH CHECK (CASE WHEN tahap = 'SIMULASI' THEN sec.punya_izin('simulasi.edit') ELSE lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('penyesuaian.putus') END);
+CREATE POLICY tulis_adj_d ON lk.penyesuaian FOR DELETE USING (CASE WHEN tahap = 'SIMULASI' THEN sec.punya_izin('simulasi.edit') ELSE lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('penyesuaian.putus') END);
+
+-- Migrasi 0005: seri item & tautan seperti lk.item; konfirmasi validasi oleh operator lapus atau pemeriksa;
+-- seri referensi bersama (dipakai banyak lapus) hanya oleh pemegang data.tulis_semua / master.kelola.
+ALTER TABLE lk.seri_item            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lk.tautan_seri          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lk.konfirmasi_validasi  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lk.seri_referensi       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lk.nilai_seri_referensi ENABLE ROW LEVEL SECURITY;
+CREATE POLICY baca_seri   ON lk.seri_item   FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_seri_i ON lk.seri_item FOR INSERT WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_seri_u ON lk.seri_item FOR UPDATE USING (lk.boleh_tulis_item(item_id)) WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_seri_d ON lk.seri_item FOR DELETE USING (lk.boleh_tulis_item(item_id));
+CREATE POLICY baca_tautan ON lk.tautan_seri FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_tautan_i ON lk.tautan_seri FOR INSERT WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_tautan_u ON lk.tautan_seri FOR UPDATE USING (lk.boleh_tulis_item(item_id)) WITH CHECK (lk.boleh_tulis_item(item_id));
+CREATE POLICY tulis_tautan_d ON lk.tautan_seri FOR DELETE USING (lk.boleh_tulis_item(item_id));
+CREATE POLICY baca_konfirmasi ON lk.konfirmasi_validasi FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_konfirmasi_i ON lk.konfirmasi_validasi FOR INSERT WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui'));
+CREATE POLICY tulis_konfirmasi_u ON lk.konfirmasi_validasi FOR UPDATE USING (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui')) WITH CHECK (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui'));
+CREATE POLICY tulis_konfirmasi_d ON lk.konfirmasi_validasi FOR DELETE USING (lk.boleh_tulis(wilayah_kode, lapus_id) OR sec.punya_izin('lk.setujui'));
+CREATE OR REPLACE FUNCTION lk.boleh_tulis_seri_ref(p_pemilik integer, p_wilayah char(4)) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = lk, sec, pg_temp AS $$
+  SELECT sec.punya_izin('data.tulis_semua') OR sec.punya_izin('master.kelola')
+      OR (p_pemilik IS NOT NULL AND EXISTS (
+            SELECT 1 FROM lk.penugasan p
+             WHERE p.pengguna_id = sec.uid() AND p.peran_tugas = 'operator' AND p.lapus_id = p_pemilik
+               AND (p_wilayah IS NULL OR p.wilayah_kode = p_wilayah)
+               AND current_date >= p.berlaku_mulai
+               AND (p.berlaku_sampai IS NULL OR current_date <= p.berlaku_sampai)))
+$$;
+CREATE POLICY baca_seri_ref ON lk.seri_referensi FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_seri_ref_i ON lk.seri_referensi FOR INSERT WITH CHECK (lk.boleh_tulis_seri_ref(lapus_pemilik_id, NULL));
+CREATE POLICY tulis_seri_ref_u ON lk.seri_referensi FOR UPDATE USING (lk.boleh_tulis_seri_ref(lapus_pemilik_id, NULL)) WITH CHECK (lk.boleh_tulis_seri_ref(lapus_pemilik_id, NULL));
+CREATE POLICY tulis_seri_ref_d ON lk.seri_referensi FOR DELETE USING (lk.boleh_tulis_seri_ref(lapus_pemilik_id, NULL));
+CREATE POLICY baca_nilai_ref ON lk.nilai_seri_referensi FOR SELECT USING (sec.uid() IS NOT NULL OR current_user = 'app_ro');
+CREATE POLICY tulis_nilai_ref_i ON lk.nilai_seri_referensi FOR INSERT WITH CHECK (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode));
+CREATE POLICY tulis_nilai_ref_u ON lk.nilai_seri_referensi FOR UPDATE USING (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode)) WITH CHECK (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode));
+CREATE POLICY tulis_nilai_ref_d ON lk.nilai_seri_referensi FOR DELETE USING (lk.boleh_tulis_seri_ref((SELECT s.lapus_pemilik_id FROM lk.seri_referensi s WHERE s.id = seri_id), wilayah_kode));
 
 -- =====================================================================
 -- AUDIT — jejak append-only berantai hash
@@ -662,7 +735,8 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['lk.item','lk.nilai_item','lk.parameter_item','lk.penyesuaian','lk.putaran',
                            'lk.penugasan','lk.status_lapus','lk.tautan_seri','lk.nilai_seri_referensi',
-                           'sec.pengguna_peran','sec.peran_izin','ref.lapus','ref.konkordansi_lapus','lk.struktur_biaya'] LOOP
+                           'sec.pengguna_peran','sec.peran_izin','ref.lapus','ref.konkordansi_lapus','lk.struktur_biaya',
+                           'lk.seri_item','lk.konfirmasi_validasi','lk.seri_referensi'] LOOP
     EXECUTE format('CREATE TRIGGER trg_audit AFTER INSERT OR UPDATE OR DELETE ON %s
                     FOR EACH ROW EXECUTE FUNCTION audit.catat()', t);
   END LOOP;

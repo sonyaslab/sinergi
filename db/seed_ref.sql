@@ -65,6 +65,11 @@ INSERT INTO ref.validasi (kode, nama, tingkat) VALUES
   ('V15','Hasil tersimpan berbeda dari hitung ulang','blokir_kunci'),
   ('V16','Satuan isian berbeda dengan satuan item','peringatan'),
   ('V17','Item berlaku tetapi semua seri wajib kosong pada periode berjalan','peringatan');
+-- Migrasi 0005: parameter validasi (V05 boleh dikonfirmasi, V06 toleransi, V08 ambang + kalibrasi P95, V11 ambang CT).
+UPDATE ref.validasi SET parameter = '{"boleh_konfirmasi": true}' WHERE kode = 'V05';
+UPDATE ref.validasi SET parameter = '{"toleransi": 0.5}' WHERE kode = 'V06';
+UPDATE ref.validasi SET parameter = '{"ambang_persen": {"qtq_volume": 30, "yoy_volume": 30, "qtq_implisit": 30, "yoy_implisit": 30}, "kalibrasi": "tetap", "p95": {"tahun_awal": 2019, "tahun_akhir": 2025, "min_titik": 8, "batas_bawah_persen": null}, "per_lapus": {}}' WHERE kode = 'V08';
+UPDATE ref.validasi SET parameter = '{"ambang_persen": 1}' WHERE kode = 'V11';
 -- Pohon lapus TD2010
 INSERT INTO ref.lapus (tahun_dasar_id, kode, nama, level, urutan, jenis, is_migas, kode_lk_bps) VALUES
   ((SELECT id FROM ref.tahun_dasar WHERE kode='TD2010'),'A','Pertanian, Kehutanan, dan Perikanan',1,1,'kategori',false,NULL),
